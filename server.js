@@ -139,6 +139,35 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+/* ═══════════ DATE RANGE — auto-detect from DB ═══════════ */
+app.get('/api/date-range', async (req, res) => {
+  try {
+    const rows = await q(`
+      SELECT MIN(d) as minDate, MAX(d) as maxDate FROM (
+        SELECT MIN(date) as d FROM seller_board_sales
+        UNION ALL
+        SELECT MAX(date) as d FROM seller_board_sales
+        UNION ALL
+        SELECT MIN(date) as d FROM seller_board_sales_old
+        UNION ALL
+        SELECT MAX(date) as d FROM seller_board_sales_old
+      ) t
+    `);
+    const r = rows[0] || {};
+    const minD = r.minDate ? new Date(r.minDate).toISOString().slice(0,10) : null;
+    const maxD = r.maxDate ? new Date(r.maxDate).toISOString().slice(0,10) : null;
+    // Default range: last 30 days of available data
+    let defaultStart = maxD, defaultEnd = maxD;
+    if (maxD) {
+      const ms = new Date(maxD);
+      ms.setDate(ms.getDate() - 29);
+      defaultStart = ms.toISOString().slice(0,10);
+      if (defaultStart < minD) defaultStart = minD;
+    }
+    res.json({ minDate: minD, maxDate: maxD, defaultStart, defaultEnd });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ═══════════ ADMIN: Check & clean overlap ═══════════ */
 app.get('/api/admin/check-overlap', async (req, res) => {
   try {
