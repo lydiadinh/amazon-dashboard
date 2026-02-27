@@ -226,8 +226,8 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
   const ChgBadge=({v})=>{if(v==null)return null;const c=v>=0?"#8CFFC1":"#FF9A8A";return<div style={{fontSize:8,fontWeight:600,color:c,marginTop:1}}>{v>=0?"↑":"↓"}{Math.abs(v).toFixed(1)}%</div>};
   const smItems=[
     {l:"Sales",v:$2(em.sales),c:ch("sales")},{l:"Orders",v:N(em.orders),c:ch("orders")},
-    {l:"Units",v:N(em.units),c:ch("units")},{l:"Refunds",v:N(em.refunds)},
-    {l:"Adv. Cost",v:$2(em.advCost),c:ch("advCost")},{l:"Est. Payout",v:$2(em.estPayout)},
+    {l:"Units",v:N(em.units),c:ch("units")},{l:"Refunds",v:N(em.refunds),c:ch("refunds")},
+    {l:"Adv. Cost",v:$2(em.advCost),c:ch("advCost")},{l:"Est. Payout",v:$2(em.estPayout),c:ch("estPayout")},
     {l:"Net Profit",v:$2(em.netProfit),c:ch("netProfit")},
   ];
   return<div>
@@ -521,7 +521,9 @@ export default function App(){
     return {
       sales: pRev, netProfit: pNP, units: prevDaily.reduce((s,d)=>s+d.units,0),
       orders: Math.round(execMetrics.orders * pRatio),
+      refunds: Math.round(execMetrics.refunds * pRatio),
       advCost: execMetrics.advCost * pRatio,
+      estPayout: execMetrics.estPayout * pRatio,
       sessions: Math.round(execMetrics.sessions * pRatio),
       margin: pRev > 0 ? (pNP / pRev * 100) : 0,
     };
