@@ -113,7 +113,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
 /* ═══════════ INVENTORY — 100% from API ═══════════ */
 function InvPage({t,mob,live}){
   const[invShop,setInvShop]=useState([]);const[invTrend,setInvTrend]=useState([]);const[loading,setLoading]=useState(true);
-  useEffect(()=>{if(!live){setLoading(false);return;}setLoading(true);Promise.all([api("inventory/by-shop").catch(()=>[]),api("inventory/stock-trend").catch(()=>[])]).then(([shops,trend])=>{if(Array.isArray(shops))setInvShop(shops.map(s=>({s:s.shop||s.s,fba:s.fbaStock||s.fba||0,inb:s.inbound||s.inb||0,res:s.reserved||s.res||0,crit:s.critical||s.crit||0,st:s.sellThrough||s.st||0,doh:s.daysOfHealth||s.doh||0})));if(Array.isArray(trend))setInvTrend(trend.map(t=>({d:t.date||t.d,v:t.stock||t.v||0})));setLoading(false)})},[live]);
+  useEffect(()=>{if(!live){setLoading(false);return;}setLoading(true);Promise.all([api("inventory/by-shop").catch(()=>[]),api("inventory/stock-trend").catch(()=>[])]).then(([shops,trend])=>{if(Array.isArray(shops))setInvShop(shops.map(s=>({s:s.shop||s.s,fba:s.fbaStock||s.fba||0,inb:s.inbound||s.inb||0,res:s.reserved||s.res||0,crit:s.criticalSkus||s.crit||0,st:s.sellThrough||s.st||0,doh:s.daysOfSupply||s.doh||0})));if(Array.isArray(trend))setInvTrend(trend.map(t=>{const dl=t.date?new Date(t.date).toLocaleDateString("en-US",{month:"short",day:"numeric"}):(t.d||"");return{d:dl,v:parseInt(t.fbaStock)||t.stock||t.v||0}}));setLoading(false)})},[live]);
   if(loading)return<Spinner t={t} text="Loading inventory..."/>;
   const totalFba=invShop.reduce((s,x)=>s+(x.fba||0),0),totalInb=invShop.reduce((s,x)=>s+(x.inb||0),0),totalRes=invShop.reduce((s,x)=>s+(x.res||0),0),totalCrit=invShop.reduce((s,x)=>s+(x.crit||0),0),avgSt=invShop.length?(invShop.reduce((s,x)=>s+(x.st||0),0)/invShop.length):0;
   return<div>
@@ -192,7 +192,9 @@ export default function App(){
   const[fPlanBk,setFPlanBk]=useState([]);
   useEffect(()=>{if(!live)return;api("plan/actuals",{seller:seller!=="All"?seller:undefined,brand:brand!=="All"?brand:undefined,asin:asinF!=="All"?asinF:undefined}).then(d=>{if(d?.asinBreakdown)setFPlanBk(d.asinBreakdown)}).catch(()=>setFPlanBk([]))},[live,seller,brand,asinF]);
   const pctChg=(cur,prev)=>{if(!prev||prev===0)return null;return((cur-prev)/Math.abs(prev)*100)};
-  const showStore=["exec","shops","daily","prod"].includes(pg);const showSeller=["exec","team","plan","prod"].includes(pg);const showBrand=["exec","plan","prod"].includes(pg);const showAsin=["plan","prod"].includes(pg);
+  // Filter visibility per page (per user feedback):
+  // Executive, Shop: Store, Seller | Team: Seller | Plan, Product: Seller, Brand, ASIN | Daily/Ops: Store | Inventory: none
+  const showStore=["exec","shops","daily"].includes(pg);const showSeller=["exec","shops","team","plan","prod"].includes(pg);const showBrand=["plan","prod"].includes(pg);const showAsin=["plan","prod"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting to database..."/></div>;
   if(!live)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg,fontFamily:"'DM Sans',system-ui,sans-serif"}}><div style={{textAlign:"center",padding:40,background:t.card,borderRadius:16,border:"1px solid "+t.cardBorder,maxWidth:400}}><div style={{fontSize:48,marginBottom:16}}>🔌</div><div style={{fontSize:18,fontWeight:700,color:t.text,marginBottom:8}}>Database Not Connected</div><div style={{fontSize:13,color:t.textSec,lineHeight:1.6}}>Please set your database credentials in Railway Variables (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) and redeploy.</div></div></div>;
