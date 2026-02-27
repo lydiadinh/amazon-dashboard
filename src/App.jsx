@@ -428,21 +428,23 @@ export default function App(){
   },[live,sd,ed,store,seller,brand,asinF]);
 
   // ═══════════ FILTERED DATA (live or demo) ═══════════
+  const emptyEm={sales:0,units:0,orders:0,refunds:0,advCost:0,shippingCost:0,refundCost:0,amazonFees:0,cogs:0,netProfit:0,estPayout:0,grossProfit:0,sessions:0,realAcos:0,pctRefunds:0,margin:0};
+
   const fDaily=useMemo(()=>{
-    if(live&&liveDaily)return liveDaily;
+    if(live)return liveDaily||[];
     return demoDaily.filter(d=>d.date>=sd&&d.date<=ed);
   },[live,liveDaily,sd,ed]);
 
   // Date ratio for demo mode scaling
   const dateRatio=useMemo(()=>{
-    if(live)return 1; // live mode doesn't need ratio
+    if(live)return 1;
     const totalRev=demoDaily.reduce((s,d)=>s+d.revenue,0);
     const selRev=fDaily.reduce((s,d)=>s+d.revenue,0);
     return totalRev>0?selRev/totalRev:1;
   },[live,fDaily]);
 
   const fAsin=useMemo(()=>{
-    if(live&&liveAsins)return liveAsins;
+    if(live)return liveAsins||[];
     let d=[...asinPerf];
     if(store!=="All")d=d.filter(a=>a.st===store);
     if(seller!=="All")d=d.filter(a=>a.sl===seller);
@@ -452,7 +454,7 @@ export default function App(){
   },[live,liveAsins,store,seller,brand,asinF,dateRatio]);
 
   const fShopData=useMemo(()=>{
-    if(live&&liveShops)return liveShops;
+    if(live)return liveShops||[];
     let d=[...shopData];
     if(store!=="All")d=d.filter(s=>s.s===store);
     if(seller!=="All"){const shops=Object.entries(SHOP_SELLERS).filter(([k,v])=>v.includes(seller)).map(([k])=>k);d=d.filter(s=>shops.includes(s.s));}
@@ -462,7 +464,7 @@ export default function App(){
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
   const fSeller=useMemo(()=>{
-    if(live&&liveSellers)return liveSellers;
+    if(live)return liveSellers||[];
     let d=[...sellerData];
     if(seller!=="All")d=d.filter(s=>s.sl===seller);
     if(store!=="All"){const sls=SHOP_SELLERS[store]||[];d=d.filter(s=>sls.includes(s.sl));}
@@ -470,6 +472,7 @@ export default function App(){
   },[live,liveSellers,seller,store,dateRatio]);
 
   const fPlanBk=useMemo(()=>{
+    // TODO: fetch from /api/plan/data + /api/plan/actuals when live
     let d=[...asinPlanBk];
     if(seller!=="All")d=d.filter(a=>a.sl===seller);
     if(brand!=="All")d=d.filter(a=>a.br===brand);
@@ -479,7 +482,7 @@ export default function App(){
 
   // ═══════════ COMPUTED EXEC METRICS ═══════════
   const em = useMemo(() => {
-    if(live&&liveExec)return liveExec;
+    if(live)return liveExec||emptyEm;
     const dailyRev = fDaily.reduce((s, d) => s + d.revenue, 0);
     const dailyNP = fDaily.reduce((s, d) => s + d.netProfit, 0);
     const dailyUnits = fDaily.reduce((s, d) => s + d.units, 0);
@@ -508,7 +511,7 @@ export default function App(){
   },[live,sd,ed]);
 
   const prevEm = useMemo(() => {
-    if(live)return livePrevExec;
+    if(live)return livePrevExec||null;
     const days = Math.max(1, Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1);
     const prevEnd = new Date(new Date(sd).getTime() - 86400000);
     const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
@@ -578,6 +581,8 @@ export default function App(){
       </div>}
       {/* Content */}
       <div style={{flex:1,overflow:"auto",padding:mob?12:20}}>
+        {live&&liveLoading&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:40,gap:10}}><div style={{width:20,height:20,border:"3px solid "+t.primary,borderTop:"3px solid transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><span style={{fontSize:13,color:t.textSec,fontWeight:600}}>Loading from database...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>}
+        {(!live||!liveLoading)&&<>
         {pg==="exec"&&<ExecPage t={t} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={em} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob}/>}
         {pg==="inv"&&<InvPage t={t} mob={mob}/>}
         {pg==="plan"&&<PlanPage t={t} fPlanBk={fPlanBk}/>}
@@ -585,6 +590,7 @@ export default function App(){
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} fSeller={fSeller} fDaily={fDaily}/>}
         {pg==="daily"&&<OpsPage t={t} fDaily={fDaily} fShopData={fShopData}/>}
+        </>}
         <div style={{height:30}}/>
       </div>
     </div>
