@@ -402,21 +402,28 @@ export default function App(){
   // ═══════════ FILTERED DATA (demo mode) ═══════════
   const fDaily=useMemo(()=>demoDaily.filter(d=>d.date>=sd&&d.date<=ed),[sd,ed]);
 
+  // Date ratio: what fraction of total revenue is in the selected range
+  const dateRatio=useMemo(()=>{
+    const totalRev=demoDaily.reduce((s,d)=>s+d.revenue,0);
+    const selRev=fDaily.reduce((s,d)=>s+d.revenue,0);
+    return totalRev>0?selRev/totalRev:1;
+  },[fDaily]);
+
   const fAsin=useMemo(()=>{
     let d=[...asinPerf];
     if(store!=="All")d=d.filter(a=>a.st===store);
     if(seller!=="All")d=d.filter(a=>a.sl===seller);
     if(brand!=="All")d=d.filter(a=>a.b===brand);
     if(asinF!=="All")d=d.filter(a=>a.a===asinF);
-    return d;
-  },[store,seller,brand,asinF]);
+    return d.map(a=>({...a,r:Math.round(a.r*dateRatio),n:Math.round(a.n*dateRatio),u:Math.round(a.u*dateRatio)}));
+  },[store,seller,brand,asinF,dateRatio]);
 
   const fShopData=useMemo(()=>{
     let d=[...shopData];
     if(store!=="All")d=d.filter(s=>s.s===store);
     if(seller!=="All"){const shops=Object.entries(SHOP_SELLERS).filter(([k,v])=>v.includes(seller)).map(([k])=>k);d=d.filter(s=>shops.includes(s.s));}
-    return d;
-  },[store,seller]);
+    return d.map(s=>({...s,r:Math.round(s.r*dateRatio),n:Math.round(s.n*dateRatio),o:Math.round(s.o*dateRatio),ss:Math.round(s.ss*dateRatio)}));
+  },[store,seller,dateRatio]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
@@ -424,8 +431,8 @@ export default function App(){
     let d=[...sellerData];
     if(seller!=="All")d=d.filter(s=>s.sl===seller);
     if(store!=="All"){const sls=SHOP_SELLERS[store]||[];d=d.filter(s=>sls.includes(s.sl));}
-    return d;
-  },[seller,store]);
+    return d.map(s=>({...s,r:Math.round(s.r*dateRatio),n:Math.round(s.n*dateRatio)}));
+  },[seller,store,dateRatio]);
 
   const fPlanBk=useMemo(()=>{
     let d=[...asinPlanBk];
@@ -437,25 +444,22 @@ export default function App(){
 
   // ═══════════ COMPUTED EXEC METRICS ═══════════
   const em = useMemo(() => {
-    const totalDays = 31;
-    const selectedDays = fDaily.length;
-    const ratio = selectedDays / totalDays;
     const dailyRev = fDaily.reduce((s, d) => s + d.revenue, 0);
     const dailyNP = fDaily.reduce((s, d) => s + d.netProfit, 0);
     const dailyUnits = fDaily.reduce((s, d) => s + d.units, 0);
     return {
-      sales: dailyRev, units: dailyUnits, orders: Math.round(execMetrics.orders * ratio),
-      refunds: Math.round(execMetrics.refunds * ratio),
-      advCost: execMetrics.advCost * ratio, shippingCost: execMetrics.shippingCost * ratio,
-      refundCost: execMetrics.refundCost * ratio, amazonFees: execMetrics.amazonFees * ratio,
-      cogs: execMetrics.cogs * ratio, netProfit: dailyNP,
-      estPayout: execMetrics.estPayout * ratio, grossProfit: execMetrics.grossProfit * ratio,
-      sessions: Math.round(execMetrics.sessions * ratio),
-      realAcos: dailyRev > 0 ? (Math.abs(execMetrics.advCost * ratio) / dailyRev * 100) : 0,
+      sales: dailyRev, units: dailyUnits, orders: Math.round(execMetrics.orders * dateRatio),
+      refunds: Math.round(execMetrics.refunds * dateRatio),
+      advCost: execMetrics.advCost * dateRatio, shippingCost: execMetrics.shippingCost * dateRatio,
+      refundCost: execMetrics.refundCost * dateRatio, amazonFees: execMetrics.amazonFees * dateRatio,
+      cogs: execMetrics.cogs * dateRatio, netProfit: dailyNP,
+      estPayout: execMetrics.estPayout * dateRatio, grossProfit: execMetrics.grossProfit * dateRatio,
+      sessions: Math.round(execMetrics.sessions * dateRatio),
+      realAcos: dailyRev > 0 ? (Math.abs(execMetrics.advCost * dateRatio) / dailyRev * 100) : 0,
       pctRefunds: execMetrics.pctRefunds,
       margin: dailyRev > 0 ? (dailyNP / dailyRev * 100) : 0,
     };
-  }, [fDaily]);
+  }, [fDaily, dateRatio]);
 
   const prevEm = useMemo(() => {
     const days = Math.max(1, Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1);
@@ -467,7 +471,7 @@ export default function App(){
     const pRev = prevDaily.reduce((s, d) => s + d.revenue, 0);
     const pNP = prevDaily.reduce((s, d) => s + d.netProfit, 0);
     const pUnits = prevDaily.reduce((s, d) => s + d.units, 0);
-    const pRatio = prevDaily.length / 31;
+    const pRatio = prevDaily.length > 0 ? prevDaily.reduce((s,d)=>s+d.revenue,0) / demoDaily.reduce((s,d)=>s+d.revenue,0) : 0;
     return {
       sales: pRev, netProfit: pNP, units: pUnits,
       orders: Math.round(execMetrics.orders * pRatio),
