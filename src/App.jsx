@@ -187,7 +187,7 @@ function PeriodBtns({onSelect,t}){
     ["Last 3M",monthStart(3),fmt(td)],["Last 6M",monthStart(6),fmt(td)],
     ["YTD",td.getFullYear()+"-01-01",fmt(td)],
   ];
-  return<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{P.map(([l,s,e])=><button key={l} onClick={()=>onSelect(s,e)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.inputBorder,fontSize:10,cursor:"pointer",fontWeight:600,background:t.card,color:t.textSec,whiteSpace:"nowrap"}}>{l}</button>)}</div>;
+  return<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{P.map(([l,s,e])=><button key={l} onClick={()=>onSelect(s,e,l)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.inputBorder,fontSize:10,cursor:"pointer",fontWeight:600,background:t.card,color:t.textSec,whiteSpace:"nowrap"}}>{l}</button>)}</div>;
 }
 
 function ClearBtn({onClick,t}){return<button onClick={onClick} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.red,fontSize:10,cursor:"pointer",fontWeight:600,background:"transparent",color:t.red,whiteSpace:"nowrap"}}>✕ Clear</button>}
