@@ -376,13 +376,14 @@ export default function App(){
 
   // Global filters — default end = today
   const today=new Date().toISOString().slice(0,10);
-  const[sd,setSd]=useState("2026-01-01");const[ed,setEd]=useState(today);
+  const defaultStart=new Date().getFullYear()+"-01-01";
+  const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(today);
   const[activePeriod,setActivePeriod]=useState(null);
   const[store,setStore]=useState("All");const[seller,setSeller]=useState("All");
   const[brand,setBrand]=useState("All");const[asinF,setAsinF]=useState("All");
   const[planYear,setPlanYear]=useState(2026);
 
-  const clearDates=()=>{setSd("2026-01-01");setEd(new Date().toISOString().slice(0,10));setActivePeriod(null)};
+  const clearDates=()=>{setSd(new Date().getFullYear()+"-01-01");setEd(new Date().toISOString().slice(0,10));setActivePeriod(null)};
 
   // Master ASIN list for bidirectional filters
   const masterList=useMemo(()=>{
@@ -399,40 +400,74 @@ export default function App(){
   useEffect(()=>{if(brand!=="All"&&!opts.brands.includes(brand))setBrand("All")},[opts.brands]);
   useEffect(()=>{if(asinF!=="All"&&!opts.asins.includes(asinF))setAsinF("All")},[opts.asins]);
 
-  // ═══════════ FILTERED DATA (demo mode) ═══════════
-  const fDaily=useMemo(()=>demoDaily.filter(d=>d.date>=sd&&d.date<=ed),[sd,ed]);
+  // ═══════════ LIVE API DATA ═══════════
+  const[liveDaily,setLiveDaily]=useState(null);const[liveExec,setLiveExec]=useState(null);
+  const[liveAsins,setLiveAsins]=useState(null);const[liveShops,setLiveShops]=useState(null);
+  const[liveSellers,setLiveSellers]=useState(null);const[liveLoading,setLiveLoading]=useState(false);
 
-  // Date ratio: what fraction of total revenue is in the selected range
+  // Fetch all data from API when live + filters change
+  useEffect(()=>{
+    if(!live)return;
+    setLiveLoading(true);
+    const p={start:sd,end:ed};
+    const pA={...p,store:store!=="All"?store:undefined,seller:seller!=="All"?seller:undefined,brand:brand!=="All"?brand:undefined,asin:asinF!=="All"?asinF:undefined};
+    Promise.all([
+      api("exec/daily",p).catch(()=>null),
+      api("exec/summary",p).catch(()=>null),
+      api("exec/top-asins",pA).catch(()=>null),
+      api("shops",{...p,store:store!=="All"?store:undefined}).catch(()=>null),
+      api("team",{...p,seller:seller!=="All"?seller:undefined}).catch(()=>null),
+    ]).then(([daily,exec,asins,shops,sellers])=>{
+      if(daily)setLiveDaily(daily.map(d=>({date:d.date?.slice(0,10),label:new Date(d.date).toLocaleDateString("en-US",{month:"short",day:"numeric"}),revenue:parseFloat(d.revenue)||0,netProfit:parseFloat(d.netProfit)||0,units:parseInt(d.units)||0})));
+      if(exec)setLiveExec(exec);
+      if(asins)setLiveAsins(asins.map(a=>({a:a.asin,b:a.brand||"",st:a.brand||"",sl:a.seller||"",r:a.revenue||0,n:a.netProfit||0,m:a.margin||0,u:a.units||0,cr:a.cr||0,ac:a.acos||0,ro:a.acos>0?(100/a.acos):0})));
+      if(shops)setLiveShops(shops.map(s=>({s:s.shop,r:s.revenue||0,n:s.netProfit||0,m:s.margin||0,f:s.fbaStock||0,o:s.orders||0,ss:0})));
+      if(sellers)setLiveSellers(sellers.map(s=>({sl:s.seller,r:s.revenue||0,n:s.netProfit||0,m:s.margin||0,u90:0,as:s.asinCount||0})));
+      setLiveLoading(false);
+    });
+  },[live,sd,ed,store,seller,brand,asinF]);
+
+  // ═══════════ FILTERED DATA (live or demo) ═══════════
+  const fDaily=useMemo(()=>{
+    if(live&&liveDaily)return liveDaily;
+    return demoDaily.filter(d=>d.date>=sd&&d.date<=ed);
+  },[live,liveDaily,sd,ed]);
+
+  // Date ratio for demo mode scaling
   const dateRatio=useMemo(()=>{
+    if(live)return 1; // live mode doesn't need ratio
     const totalRev=demoDaily.reduce((s,d)=>s+d.revenue,0);
     const selRev=fDaily.reduce((s,d)=>s+d.revenue,0);
     return totalRev>0?selRev/totalRev:1;
-  },[fDaily]);
+  },[live,fDaily]);
 
   const fAsin=useMemo(()=>{
+    if(live&&liveAsins)return liveAsins;
     let d=[...asinPerf];
     if(store!=="All")d=d.filter(a=>a.st===store);
     if(seller!=="All")d=d.filter(a=>a.sl===seller);
     if(brand!=="All")d=d.filter(a=>a.b===brand);
     if(asinF!=="All")d=d.filter(a=>a.a===asinF);
     return d.map(a=>({...a,r:Math.round(a.r*dateRatio),n:Math.round(a.n*dateRatio),u:Math.round(a.u*dateRatio)}));
-  },[store,seller,brand,asinF,dateRatio]);
+  },[live,liveAsins,store,seller,brand,asinF,dateRatio]);
 
   const fShopData=useMemo(()=>{
+    if(live&&liveShops)return liveShops;
     let d=[...shopData];
     if(store!=="All")d=d.filter(s=>s.s===store);
     if(seller!=="All"){const shops=Object.entries(SHOP_SELLERS).filter(([k,v])=>v.includes(seller)).map(([k])=>k);d=d.filter(s=>shops.includes(s.s));}
     return d.map(s=>({...s,r:Math.round(s.r*dateRatio),n:Math.round(s.n*dateRatio),o:Math.round(s.o*dateRatio),ss:Math.round(s.ss*dateRatio)}));
-  },[store,seller,dateRatio]);
+  },[live,liveShops,store,seller,dateRatio]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
   const fSeller=useMemo(()=>{
+    if(live&&liveSellers)return liveSellers;
     let d=[...sellerData];
     if(seller!=="All")d=d.filter(s=>s.sl===seller);
     if(store!=="All"){const sls=SHOP_SELLERS[store]||[];d=d.filter(s=>sls.includes(s.sl));}
     return d.map(s=>({...s,r:Math.round(s.r*dateRatio),n:Math.round(s.n*dateRatio)}));
-  },[seller,store,dateRatio]);
+  },[live,liveSellers,seller,store,dateRatio]);
 
   const fPlanBk=useMemo(()=>{
     let d=[...asinPlanBk];
@@ -444,6 +479,7 @@ export default function App(){
 
   // ═══════════ COMPUTED EXEC METRICS ═══════════
   const em = useMemo(() => {
+    if(live&&liveExec)return liveExec;
     const dailyRev = fDaily.reduce((s, d) => s + d.revenue, 0);
     const dailyNP = fDaily.reduce((s, d) => s + d.netProfit, 0);
     const dailyUnits = fDaily.reduce((s, d) => s + d.units, 0);
@@ -459,9 +495,20 @@ export default function App(){
       pctRefunds: execMetrics.pctRefunds,
       margin: dailyRev > 0 ? (dailyNP / dailyRev * 100) : 0,
     };
-  }, [fDaily, dateRatio]);
+  }, [live, liveExec, fDaily, dateRatio]);
+
+  const[livePrevExec,setLivePrevExec]=useState(null);
+  useEffect(()=>{
+    if(!live)return;
+    const days=Math.max(1,Math.round((new Date(ed)-new Date(sd))/86400000)+1);
+    const prevEnd=new Date(new Date(sd).getTime()-86400000);
+    const prevStart=new Date(prevEnd.getTime()-(days-1)*86400000);
+    const pSD=prevStart.toISOString().slice(0,10),pED=prevEnd.toISOString().slice(0,10);
+    api("exec/summary",{start:pSD,end:pED}).then(d=>setLivePrevExec(d)).catch(()=>setLivePrevExec(null));
+  },[live,sd,ed]);
 
   const prevEm = useMemo(() => {
+    if(live)return livePrevExec;
     const days = Math.max(1, Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1);
     const prevEnd = new Date(new Date(sd).getTime() - 86400000);
     const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
@@ -470,16 +517,15 @@ export default function App(){
     if (!prevDaily.length) return null;
     const pRev = prevDaily.reduce((s, d) => s + d.revenue, 0);
     const pNP = prevDaily.reduce((s, d) => s + d.netProfit, 0);
-    const pUnits = prevDaily.reduce((s, d) => s + d.units, 0);
-    const pRatio = prevDaily.length > 0 ? prevDaily.reduce((s,d)=>s+d.revenue,0) / demoDaily.reduce((s,d)=>s+d.revenue,0) : 0;
+    const pRatio = prevDaily.length > 0 ? pRev / demoDaily.reduce((s,d)=>s+d.revenue,0) : 0;
     return {
-      sales: pRev, netProfit: pNP, units: pUnits,
+      sales: pRev, netProfit: pNP, units: prevDaily.reduce((s,d)=>s+d.units,0),
       orders: Math.round(execMetrics.orders * pRatio),
       advCost: execMetrics.advCost * pRatio,
       sessions: Math.round(execMetrics.sessions * pRatio),
       margin: pRev > 0 ? (pNP / pRev * 100) : 0,
     };
-  }, [sd, ed]);
+  }, [live, livePrevExec, sd, ed]);
 
   const pctChg = useCallback((cur, prev) => {
     if (prev == null || prev === 0) return undefined;
