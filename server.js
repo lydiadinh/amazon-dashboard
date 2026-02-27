@@ -217,12 +217,23 @@ app.get('/api/filters', async (req, res) => {
     const shops = await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL ORDER BY shop');
     const sellers = await q('SELECT DISTINCT seller FROM asin WHERE seller IS NOT NULL AND seller != "" ORDER BY seller');
     const brands = await q('SELECT DISTINCT store FROM asin WHERE store IS NOT NULL AND store != "" ORDER BY store');
-    const asins = await q('SELECT DISTINCT a.asin, a.seller, a.store FROM asin a ORDER BY a.store, a.asin');
+    // Get full mapping: asin → seller → brand → shop (via seller_board_product → accountId → accounts)
+    const asinShopMap = await q(`
+      SELECT DISTINCT a.asin, a.seller, a.store as brand, acc.shop
+      FROM asin a
+      LEFT JOIN (
+        SELECT DISTINCT asin, accountId FROM seller_board_product
+        UNION
+        SELECT DISTINCT asin, accountId FROM seller_board_sales
+      ) p ON a.asin = p.asin
+      LEFT JOIN accounts acc ON p.accountId = acc.id AND acc.deleted_at IS NULL
+      ORDER BY acc.shop, a.store, a.asin
+    `);
     res.json({
       shops: shops.map(s => ({ id: s.id, name: s.shop })),
       sellers: sellers.map(s => s.seller),
       brands: brands.map(b => b.store),
-      asins: asins.map(a => ({ asin: a.asin, seller: a.seller, brand: a.store })),
+      asins: asinShopMap.map(a => ({ asin: a.asin, seller: a.seller, brand: a.brand, shop: a.shop })),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -233,20 +244,63 @@ app.get('/api/filters', async (req, res) => {
    ═══════════════════════════════════════════════════ */
 app.get('/api/exec/summary', async (req, res) => {
   try {
-    const { start, end } = req.query;
+    const { start, end, store, seller, brand, asin: asinFilter } = req.query;
     const s = start || '2026-01-01', e = end || '2026-01-31';
-    const rows = await q(`
-      SELECT
-        SUM(d.sales) as sales, SUM(d.units) as units,
-        SUM(d.orders) as orders, SUM(d.refunds) as refunds,
-        SUM(d.adSpend) as advCost, SUM(d.shipping) as shippingCost,
-        SUM(d.refundCost) as refundCost, SUM(d.amazonFees) as amazonFees,
-        SUM(d.cogs) as cogs, SUM(d.estimatedPayout) as estPayout,
-        SUM(d.grossProfit) as grossProfit, SUM(d.netProfit) as netProfit,
-        SUM(d.sessions) as sessions
-      FROM ${salesUnion()} d
-      WHERE d.date BETWEEN ? AND ?
-    `, [s, e]);
+    const hasSBA = (seller && seller !== 'All') || (brand && brand !== 'All') || (asinFilter && asinFilter !== 'All');
+
+    let rows;
+    if (hasSBA) {
+      // Use seller_board_product (has per-ASIN data for seller/brand/asin filtering)
+      let where = 'WHERE p.date BETWEEN ? AND ?';
+      const params = [s, e];
+      if (store && store !== 'All') {
+        const shopMap = await getShopMap();
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { where += ' AND p.accountId = ?'; params.push(parseInt(accId)); }
+      }
+      if (seller !== 'All' && seller) { where += ' AND a.seller = ?'; params.push(seller); }
+      if (brand !== 'All' && brand) { where += ' AND a.store = ?'; params.push(brand); }
+      if (asinFilter !== 'All' && asinFilter) { where += ' AND p.asin = ?'; params.push(asinFilter); }
+      rows = await q(`
+        SELECT
+          SUM(p.salesOrganic + p.salesPPC) as sales,
+          SUM(p.unitsOrganic + p.unitsPPC) as units,
+          SUM(COALESCE(p.orders,0)) as orders,
+          SUM(COALESCE(p.refunds,0)) as refunds,
+          SUM(COALESCE(p.sponsoredProducts,0)+COALESCE(p.sponsoredDisplay,0)+COALESCE(p.sponsoredBrands,0)+COALESCE(p.sponsoredBrandsVideo,0)+COALESCE(p.googleAds,0)+COALESCE(p.facebookAds,0)) as advCost,
+          SUM(COALESCE(p.shipping,0)) as shippingCost,
+          SUM(COALESCE(p.refundCost,0)) as refundCost,
+          SUM(COALESCE(p.amazonFees,0)) as amazonFees,
+          SUM(COALESCE(p.costOfGoods,0)) as cogs,
+          SUM(COALESCE(p.estimatedPayout,0)) as estPayout,
+          SUM(COALESCE(p.grossProfit,0)) as grossProfit,
+          SUM(COALESCE(p.netProfit,0)) as netProfit,
+          SUM(COALESCE(p.sessions,0)) as sessions
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
+        ${where}
+      `, params);
+    } else {
+      // Use salesUnion (faster, account-level)
+      let extraWhere = '';
+      const params = [s, e];
+      if (store && store !== 'All') {
+        const shopMap = await getShopMap();
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { extraWhere = ' AND d.accountId = ?'; params.push(parseInt(accId)); }
+      }
+      rows = await q(`
+        SELECT
+          SUM(d.sales) as sales, SUM(d.units) as units,
+          SUM(d.orders) as orders, SUM(d.refunds) as refunds,
+          SUM(d.adSpend) as advCost, SUM(d.shipping) as shippingCost,
+          SUM(d.refundCost) as refundCost, SUM(d.amazonFees) as amazonFees,
+          SUM(d.cogs) as cogs, SUM(d.estimatedPayout) as estPayout,
+          SUM(d.grossProfit) as grossProfit, SUM(d.netProfit) as netProfit,
+          SUM(d.sessions) as sessions
+        FROM ${salesUnion()} d
+        WHERE d.date BETWEEN ? AND ? ${extraWhere}
+      `, params);
+    }
     const r = rows[0] || {};
     const sales = parseFloat(r.sales) || 0;
     const np = parseFloat(r.netProfit) || 0;
@@ -268,34 +322,68 @@ app.get('/api/exec/summary', async (req, res) => {
 // Daily trend — from seller_board_day (matches PBI "DR" measures)
 app.get('/api/exec/daily', async (req, res) => {
   try {
-    const { start, end } = req.query;
+    const { start, end, store, seller, brand, asin: asinFilter } = req.query;
     const s = start || '2026-01-01', e = end || '2026-01-31';
-    // Try seller_board_day first (has googleAds, facebookAds)
-    let rows = await q(`
-      SELECT date,
-        SUM(salesOrganic + salesPPC) as revenue,
-        SUM(netProfit) as netProfit,
-        SUM(unitsOrganic + unitsPPC) as units,
-        SUM(orders) as orders,
-        SUM(refunds) as refunds,
-        SUM(sessions) as sessions,
-        SUM(COALESCE(sponsoredProducts,0) + COALESCE(sponsoredDisplay,0) + COALESCE(sponsoredBrands,0) + COALESCE(sponsoredBrandsVideo,0) + COALESCE(googleAds,0) + COALESCE(facebookAds,0)) as adSpend
-      FROM seller_board_day
-      WHERE date BETWEEN ? AND ?
-      GROUP BY date ORDER BY date
-    `, [s, e]);
-    // Fallback to salesUnion if seller_board_day has no data for this period
-    if (!rows || rows.length === 0) {
+    const hasSBA = (seller && seller !== 'All') || (brand && brand !== 'All') || (asinFilter && asinFilter !== 'All');
+
+    let rows;
+    if (hasSBA) {
+      // Use seller_board_product for seller/brand/asin filtering
+      let where = 'WHERE p.date BETWEEN ? AND ?';
+      const params = [s, e];
+      if (store && store !== 'All') {
+        const shopMap = await getShopMap();
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { where += ' AND p.accountId = ?'; params.push(parseInt(accId)); }
+      }
+      if (seller !== 'All' && seller) { where += ' AND a.seller = ?'; params.push(seller); }
+      if (brand !== 'All' && brand) { where += ' AND a.store = ?'; params.push(brand); }
+      if (asinFilter !== 'All' && asinFilter) { where += ' AND p.asin = ?'; params.push(asinFilter); }
       rows = await q(`
-        SELECT d.date,
-          SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
-          SUM(d.units) as units, SUM(d.orders) as orders,
-          SUM(d.refunds) as refunds, SUM(d.sessions) as sessions,
-          SUM(d.adSpend) as adSpend
-        FROM ${salesUnion()} d
-        WHERE d.date BETWEEN ? AND ?
-        GROUP BY d.date ORDER BY d.date
-      `, [s, e]);
+        SELECT p.date,
+          SUM(p.salesOrganic + p.salesPPC) as revenue,
+          SUM(p.netProfit) as netProfit,
+          SUM(p.unitsOrganic + p.unitsPPC) as units
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
+        ${where} GROUP BY p.date ORDER BY p.date
+      `, params);
+    } else {
+      // Try seller_board_day (has googleAds, facebookAds) with optional store filter
+      let extraWhere = '';
+      const params = [s, e];
+      if (store && store !== 'All') {
+        const shopMap = await getShopMap();
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { extraWhere = ' AND accountId = ?'; params.push(parseInt(accId)); }
+      }
+      rows = await q(`
+        SELECT date,
+          SUM(salesOrganic + salesPPC) as revenue,
+          SUM(netProfit) as netProfit,
+          SUM(unitsOrganic + unitsPPC) as units,
+          SUM(orders) as orders, SUM(refunds) as refunds, SUM(sessions) as sessions,
+          SUM(COALESCE(sponsoredProducts,0)+COALESCE(sponsoredDisplay,0)+COALESCE(sponsoredBrands,0)+COALESCE(sponsoredBrandsVideo,0)+COALESCE(googleAds,0)+COALESCE(facebookAds,0)) as adSpend
+        FROM seller_board_day
+        WHERE date BETWEEN ? AND ? ${extraWhere}
+        GROUP BY date ORDER BY date
+      `, params);
+      // Fallback to salesUnion
+      if (!rows || rows.length === 0) {
+        const params2 = [s, e];
+        let ew2 = '';
+        if (store && store !== 'All') {
+          const shopMap = await getShopMap();
+          const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+          if (accId) { ew2 = ' AND d.accountId = ?'; params2.push(parseInt(accId)); }
+        }
+        rows = await q(`
+          SELECT d.date, SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
+            SUM(d.units) as units, SUM(d.orders) as orders, SUM(d.sessions) as sessions,
+            SUM(d.adSpend) as adSpend
+          FROM ${salesUnion()} d WHERE d.date BETWEEN ? AND ? ${ew2}
+          GROUP BY d.date ORDER BY d.date
+        `, params2);
+      }
     }
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -552,30 +640,52 @@ app.get('/api/product/asins', async (req, res) => {
    ═══════════════════════════════════════════════ */
 app.get('/api/shops', async (req, res) => {
   try {
-    const { start, end, store } = req.query;
+    const { start, end, store, seller } = req.query;
     const s = start || '2026-01-01', e = end || '2026-01-31';
     const shopMap = await getShopMap();
-    let having = '';
-    if (store && store !== 'All') {
-      const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
-      if (accId) having = ` HAVING d.accountId = ${parseInt(accId)}`;
+    const hasSeller = seller && seller !== 'All';
+
+    let rows;
+    if (hasSeller) {
+      // Use seller_board_product joined with asin to filter by seller, grouped by accountId
+      let where = 'WHERE p.date BETWEEN ? AND ? AND a.seller = ?';
+      const params = [s, e, seller];
+      if (store && store !== 'All') {
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { where += ' AND p.accountId = ?'; params.push(parseInt(accId)); }
+      }
+      rows = await q(`
+        SELECT p.accountId,
+          SUM(p.salesOrganic + p.salesPPC) as revenue,
+          SUM(p.netProfit) as netProfit,
+          SUM(p.unitsOrganic + p.unitsPPC) as units,
+          SUM(COALESCE(p.orders,0)) as orders
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
+        ${where} GROUP BY p.accountId ORDER BY revenue DESC
+      `, params);
+    } else {
+      let having = '';
+      const params = [s, e];
+      if (store && store !== 'All') {
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) having = ` HAVING d.accountId = ${parseInt(accId)}`;
+      }
+      rows = await q(`
+        SELECT d.accountId,
+          SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
+          SUM(d.units) as units, SUM(d.orders) as orders
+        FROM ${salesUnion()} d
+        WHERE d.date BETWEEN ? AND ?
+        GROUP BY d.accountId ${having} ORDER BY revenue DESC
+      `, params);
     }
-    const rows = await q(`
-      SELECT d.accountId,
-        SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
-        SUM(d.units) as units, SUM(d.orders) as orders
-      FROM ${salesUnion()} d
-      WHERE d.date BETWEEN ? AND ?
-      GROUP BY d.accountId ${having} ORDER BY revenue DESC
-    `, [s, e]);
 
     // FBA stock from seller_board_stock (no date column - snapshot table)
     let stockMap = {};
     try {
       const stocks = await q(`
         SELECT accountId, SUM(FBAStock) as fbaStock, SUM(COALESCE(stockValue,0)) as stockValue
-        FROM seller_board_stock
-        GROUP BY accountId
+        FROM seller_board_stock GROUP BY accountId
       `);
       stocks.forEach(ss => { stockMap[ss.accountId] = { fba: ss.fbaStock, sv: ss.stockValue }; });
     } catch (ex) {}
@@ -625,30 +735,34 @@ app.get('/api/team', async (req, res) => {
    ═══════════════════════════════════════════════ */
 app.get('/api/ops/daily', async (req, res) => {
   try {
-    const { start, end } = req.query;
+    const { start, end, store } = req.query;
     const s = start || '2026-01-01', e = end || '2026-01-31';
+    let extraWhere = '';
+    const params = [s, e];
+    if (store && store !== 'All') {
+      const shopMap = await getShopMap();
+      const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+      if (accId) { extraWhere = ' AND accountId = ?'; params.push(parseInt(accId)); }
+    }
     let rows = await q(`
-      SELECT date,
-        SUM(salesOrganic + salesPPC) as revenue,
-        SUM(netProfit) as netProfit,
-        SUM(unitsOrganic + unitsPPC) as units,
-        SUM(orders) as orders,
-        SUM(COALESCE(sponsoredProducts,0) + COALESCE(sponsoredDisplay,0) + COALESCE(sponsoredBrands,0) + COALESCE(sponsoredBrandsVideo,0) + COALESCE(googleAds,0) + COALESCE(facebookAds,0)) as adSpend
-      FROM seller_board_day
-      WHERE date BETWEEN ? AND ?
+      SELECT date, SUM(salesOrganic + salesPPC) as revenue, SUM(netProfit) as netProfit,
+        SUM(unitsOrganic + unitsPPC) as units, SUM(orders) as orders,
+        SUM(COALESCE(sponsoredProducts,0)+COALESCE(sponsoredDisplay,0)+COALESCE(sponsoredBrands,0)+COALESCE(sponsoredBrandsVideo,0)+COALESCE(googleAds,0)+COALESCE(facebookAds,0)) as adSpend
+      FROM seller_board_day WHERE date BETWEEN ? AND ? ${extraWhere}
       GROUP BY date ORDER BY date DESC LIMIT 30
-    `, [s, e]);
-    // Fallback to salesUnion if seller_board_day has no data
+    `, params);
     if (!rows || rows.length === 0) {
-      rows = await q(`
-        SELECT d.date,
-          SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
-          SUM(d.units) as units, SUM(d.orders) as orders,
-          SUM(d.adSpend) as adSpend
-        FROM ${salesUnion()} d
-        WHERE d.date BETWEEN ? AND ?
-        GROUP BY d.date ORDER BY d.date DESC LIMIT 30
-      `, [s, e]);
+      const p2 = [s, e];
+      let ew2 = '';
+      if (store && store !== 'All') {
+        const shopMap = await getShopMap();
+        const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
+        if (accId) { ew2 = ' AND d.accountId = ?'; p2.push(parseInt(accId)); }
+      }
+      rows = await q(`SELECT d.date, SUM(d.sales) as revenue, SUM(d.netProfit) as netProfit,
+        SUM(d.units) as units, SUM(d.orders) as orders, SUM(d.adSpend) as adSpend
+        FROM ${salesUnion()} d WHERE d.date BETWEEN ? AND ? ${ew2}
+        GROUP BY d.date ORDER BY d.date DESC LIMIT 30`, p2);
     }
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
