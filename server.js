@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
+const SERVER_VERSION = 'v3.5-2026-02-28';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -72,13 +73,73 @@ app.get('/api/health', async (req, res) => {
   try {
     if (pool) {
       await q('SELECT 1');
-      res.json({ status: 'ok', database: 'connected' });
+      res.json({ status: 'ok', database: 'connected', version: SERVER_VERSION });
     } else {
-      res.json({ status: 'ok', database: 'not configured' });
+      res.json({ status: 'ok', database: 'not configured', version: SERVER_VERSION });
     }
   } catch (e) {
-    res.json({ status: 'ok', database: 'error: ' + e.message });
+    res.json({ status: 'ok', database: 'error: ' + e.message, version: SERVER_VERSION });
   }
+});
+
+/* ═══════════ DEBUG ENDPOINT ═══════════ */
+app.get('/api/debug/filters', async (req, res) => {
+  const results = { version: SERVER_VERSION, steps: {} };
+  try {
+    // Step 1: accounts table
+    try {
+      const shops = await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL LIMIT 5');
+      results.steps.accounts = { ok: true, count: shops.length, sample: shops.slice(0, 3) };
+    } catch (e) { results.steps.accounts = { ok: false, error: e.message }; }
+    
+    // Step 2: asin table
+    try {
+      const sellers = await q('SELECT DISTINCT seller FROM asin WHERE seller IS NOT NULL AND seller != "" LIMIT 5');
+      const brands = await q('SELECT DISTINCT store FROM asin WHERE store IS NOT NULL AND store != "" LIMIT 5');
+      results.steps.sellers = { ok: true, count: sellers.length, sample: sellers.slice(0, 3) };
+      results.steps.brands = { ok: true, count: brands.length, sample: brands.slice(0, 3) };
+    } catch (e) { results.steps.asin = { ok: false, error: e.message }; }
+    
+    // Step 3: ASIN-shop mapping
+    try {
+      const asinShops = await q('SELECT DISTINCT p.asin, p.accountId FROM seller_board_product p WHERE p.date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY) LIMIT 10');
+      results.steps.asinShopMapping = { ok: true, count: asinShops.length, sample: asinShops.slice(0, 3) };
+    } catch (e) { results.steps.asinShopMapping = { ok: false, error: e.message }; }
+
+    // Step 4: full filters API result
+    try {
+      const shops = await q('SELECT id, shop as name FROM accounts WHERE deleted_at IS NULL ORDER BY shop');
+      const sellers = await q('SELECT DISTINCT seller FROM asin WHERE seller IS NOT NULL AND seller != "" ORDER BY seller');
+      const brands = await q('SELECT DISTINCT store FROM asin WHERE store IS NOT NULL AND store != "" ORDER BY store');
+      const asins = await q('SELECT DISTINCT a.asin, a.seller, a.store FROM asin a ORDER BY a.store, a.asin LIMIT 10');
+      results.steps.filterResponse = {
+        shops: shops.length,
+        sellers: sellers.length,
+        brands: brands.length,
+        asins: asins.length,
+        shopsSample: shops.slice(0, 3),
+        sellersSample: sellers.slice(0, 3),
+        brandsSample: brands.slice(0, 3),
+        asinsSample: asins.slice(0, 3),
+      };
+    } catch (e) { results.steps.filterResponse = { ok: false, error: e.message }; }
+
+    // Step 5: asin_plan check
+    try {
+      const plans = await q('SELECT DISTINCT year, metrics FROM asin_plan LIMIT 20');
+      results.steps.asinPlan = { ok: true, sample: plans };
+    } catch (e) { results.steps.asinPlan = { ok: false, error: e.message }; }
+
+    // Step 6: critical SKUs check
+    try {
+      const crit = await q(`SELECT COUNT(DISTINCT CASE WHEN daysOfSupply <= 7 THEN sku END) as criticalSkus FROM fba_iventory_planning WHERE date = (SELECT MAX(date) FROM fba_iventory_planning)`);
+      results.steps.criticalSkus = { ok: true, value: crit[0] };
+    } catch (e) { results.steps.criticalSkus = { ok: false, error: e.message }; }
+
+  } catch (e) {
+    results.globalError = e.message;
+  }
+  res.json(results);
 });
 
 /* ═══════════ DATE RANGE ═══════════ */
@@ -107,7 +168,7 @@ app.get('/api/date-range', async (req, res) => {
 /* ═══════════ FILTERS ═══════════ */
 app.get('/api/filters', async (req, res) => {
   try {
-    const shops = await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL ORDER BY shop');
+    const shops = await q('SELECT id, shop as name FROM accounts WHERE deleted_at IS NULL ORDER BY shop');
     const sellers = await q('SELECT DISTINCT seller FROM asin WHERE seller IS NOT NULL AND seller != "" ORDER BY seller');
     const brands = await q('SELECT DISTINCT store FROM asin WHERE store IS NOT NULL AND store != "" ORDER BY store');
     
@@ -115,10 +176,10 @@ app.get('/api/filters', async (req, res) => {
     const asinShops = await q(`
       SELECT DISTINCT p.asin, p.accountId
       FROM seller_board_product p
-      WHERE p.date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+      WHERE p.date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
     `);
     const shopMap = {};
-    shops.forEach(s => { shopMap[s.id] = s.shop; });
+    shops.forEach(s => { shopMap[s.id] = s.name; });
     const asinShopMap = {};
     asinShops.forEach(r => {
       if (!asinShopMap[r.asin]) asinShopMap[r.asin] = [];
@@ -128,7 +189,7 @@ app.get('/api/filters', async (req, res) => {
 
     const asins = await q('SELECT DISTINCT a.asin, a.seller, a.store FROM asin a ORDER BY a.store, a.asin');
     res.json({
-      shops: shops.map(s => ({ id: s.id, name: s.shop })),
+      shops: shops.map(s => ({ id: s.id, name: s.name })),
       sellers: sellers.map(s => s.seller),
       brands: brands.map(b => b.store),
       asins: asins.map(a => ({
@@ -137,6 +198,7 @@ app.get('/api/filters', async (req, res) => {
       })),
     });
   } catch (e) {
+    console.error('FILTER ENDPOINT ERROR:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -145,7 +207,7 @@ app.get('/api/filters', async (req, res) => {
 app.get('/api/exec/summary', async (req, res) => {
   try {
     const { start, end, store, seller, brand, asin: af } = req.query;
-    const s = start || '2025-01-01', e2 = end || '2025-01-31';
+    const s = start || new Date(Date.now()-30*86400000).toISOString().slice(0,10), e2 = end || new Date().toISOString().slice(0,10);
     const hasEntity = (seller && seller !== 'All') || (brand && brand !== 'All') || (af && af !== 'All');
     const hasStore = store && store !== 'All';
 
@@ -251,7 +313,7 @@ app.get('/api/exec/summary', async (req, res) => {
 app.get('/api/exec/daily', async (req, res) => {
   try {
     const { start, end, store, seller, brand, asin: af } = req.query;
-    const s = start || '2025-01-01', e2 = end || '2025-01-31';
+    const s = start || new Date(Date.now()-30*86400000).toISOString().slice(0,10), e2 = end || new Date().toISOString().slice(0,10);
     const hasEntity = (seller && seller !== 'All') || (brand && brand !== 'All') || (af && af !== 'All');
     const hasStore = store && store !== 'All';
 
@@ -310,7 +372,7 @@ app.get('/api/product/asins', async (req, res) => {
   try {
     const { start, end, store, seller, brand, asin: af } = req.query;
     let where = 'WHERE p.date BETWEEN ? AND ?';
-    const params = [start || '2025-01-01', end || '2025-01-31'];
+    const params = [start || new Date(Date.now()-30*86400000).toISOString().slice(0,10), end || new Date().toISOString().slice(0,10)];
     if (store && store !== 'All') {
       const rm = await getShopReverseMap();
       const accId = rm[store];
@@ -360,7 +422,7 @@ app.get('/api/shops', async (req, res) => {
     const { start, end, store, seller } = req.query;
     const shopMap = await getShopMap();
     let where = 'WHERE p.date BETWEEN ? AND ?';
-    const params = [start || '2025-01-01', end || '2025-01-31'];
+    const params = [start || new Date(Date.now()-30*86400000).toISOString().slice(0,10), end || new Date().toISOString().slice(0,10)];
     if (store && store !== 'All') {
       const accId = Object.entries(shopMap).find(([k, v]) => v === store)?.[0];
       if (accId) { where += ' AND p.accountId = ?'; params.push(accId); }
@@ -407,8 +469,10 @@ app.get('/api/shops', async (req, res) => {
 app.get('/api/team', async (req, res) => {
   try {
     const { start, end, seller, store } = req.query;
+    const today = new Date().toISOString().slice(0, 10);
+    const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     let where = 'WHERE p.date BETWEEN ? AND ?';
-    const params = [start || '2025-01-01', end || '2025-01-31'];
+    const params = [start || ago30, end || today];
     if (seller && seller !== 'All') { where += ' AND a.seller = ?'; params.push(seller); }
     if (store && store !== 'All') {
       const rm = await getShopReverseMap();
@@ -417,7 +481,7 @@ app.get('/api/team', async (req, res) => {
     }
 
     const rows = await q(`
-      SELECT a.seller,
+      SELECT COALESCE(a.seller, 'Unassigned') as seller,
         SUM(p.salesOrganic + p.salesPPC) as revenue,
         SUM(p.netProfit) as netProfit,
         SUM(p.unitsOrganic + p.unitsPPC) as units,
@@ -425,8 +489,7 @@ app.get('/api/team', async (req, res) => {
       FROM seller_board_product p
       LEFT JOIN asin a ON p.asin = a.asin
       ${where}
-      AND a.seller IS NOT NULL AND a.seller != ''
-      GROUP BY a.seller ORDER BY revenue DESC
+      GROUP BY COALESCE(a.seller, 'Unassigned') ORDER BY revenue DESC
     `, params);
 
     res.json(rows.map(r => {
@@ -451,7 +514,7 @@ app.get('/api/inventory/snapshot', async (req, res) => {
         SUM(CAST(available AS SIGNED) + COALESCE(totalReservedQuantity,0) + COALESCE(inboundQuantity,0)) as totalInventory,
         SUM(COALESCE(totalReservedQuantity,0)) as reserved,
         SUM(COALESCE(inboundQuantity,0)) as inbound,
-        SUM(CASE WHEN daysOfSupply <= 7 AND CAST(available AS SIGNED) > 0 THEN 1 ELSE 0 END) as criticalSkus,
+        COUNT(DISTINCT CASE WHEN daysOfSupply <= 7 THEN sku END) as criticalSkus,
         AVG(COALESCE(daysOfSupply,0)) as avgDaysOfSupply,
         SUM(COALESCE(invAge91To180Days,0)) as age91_180,
         SUM(COALESCE(invAge181To270Days,0)) as age181_270,
@@ -510,7 +573,7 @@ app.get('/api/inventory/by-shop', async (req, res) => {
         SUM(CAST(f.available AS SIGNED)) as fbaStock,
         SUM(COALESCE(f.inboundQuantity,0)) as inbound,
         SUM(COALESCE(f.totalReservedQuantity,0)) as reserved,
-        SUM(CASE WHEN f.daysOfSupply <= 7 AND CAST(f.available AS SIGNED) > 0 THEN 1 ELSE 0 END) as criticalSkus,
+        COUNT(DISTINCT CASE WHEN f.daysOfSupply <= 7 THEN f.sku END) as criticalSkus,
         AVG(COALESCE(f.sellThrough,0)) as sellThrough,
         AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply
       FROM fba_iventory_planning f
@@ -559,16 +622,22 @@ app.get('/api/inventory/by-shop', async (req, res) => {
 /* ═══════════ ASIN PLAN ═══════════ */
 const MS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const METRICS_MAP = {
-  revenue: 'rv', grossProfit: 'gp', gross_profit: 'gp', adSpend: 'ad', ad_spend: 'ad',
-  units: 'un', sessions: 'se', impressions: 'im', cr: 'cr', ctr: 'ct',
-  conversion_rate: 'cr', click_through_rate: 'ct',
+  revenue: 'rv', Revenue: 'rv', REVENUE: 'rv',
+  grossProfit: 'gp', gross_profit: 'gp', GrossProfit: 'gp', 'Gross Profit': 'gp', grossprofit: 'gp',
+  adSpend: 'ad', ad_spend: 'ad', AdSpend: 'ad', 'Ad Spend': 'ad', adspend: 'ad', ads: 'ad', Ads: 'ad',
+  units: 'un', Units: 'un', UNITS: 'un',
+  sessions: 'se', Sessions: 'se', SESSIONS: 'se',
+  impressions: 'im', Impressions: 'im', IMPRESSIONS: 'im',
+  cr: 'cr', CR: 'cr', conversion_rate: 'cr', conversionRate: 'cr', 'Conversion Rate': 'cr',
+  ctr: 'ct', CTR: 'ct', click_through_rate: 'ct', clickThroughRate: 'ct', 'Click Through Rate': 'ct',
 };
 
 app.get('/api/plan/data', async (req, res) => {
   try {
     const { year, month, brand, seller, asin: af } = req.query;
-    let where = 'WHERE 1=1';
-    const params = [];
+    const yr = year || new Date().getFullYear();
+    let where = 'WHERE ap.year = ?';
+    const params = [yr];
     if (month && month !== 'All') {
       const mn = parseInt(month);
       if (mn >= 1 && mn <= 12) { where += ' AND ap.month_num = ?'; params.push(mn); }
@@ -589,8 +658,8 @@ app.get('/api/plan/data', async (req, res) => {
     const monthlyPlan = {}; // {month_num: {rv: sum, gp: sum, ...}}
     const asinPlan = {};    // {asin: {month_num: {rv: sum, ...}}}
     rows.forEach(r => {
-      const mk = METRICS_MAP[r.metrics] || METRICS_MAP[r.metrics?.toLowerCase()] || null;
-      if (!mk) return;
+      const mk = METRICS_MAP[r.metrics] || METRICS_MAP[r.metrics?.toLowerCase()] || METRICS_MAP[r.metrics?.trim()] || null;
+      if (!mk) { console.log('Unknown plan metric:', r.metrics); return; }
       const mn = r.month_num;
       const val = parseFloat(r.value) || 0;
       if (!monthlyPlan[mn]) monthlyPlan[mn] = {};
@@ -708,7 +777,7 @@ app.get('/api/ops/daily', async (req, res) => {
   try {
     const { start, end, store } = req.query;
     let where = 'WHERE date BETWEEN ? AND ?';
-    const params = [start || '2025-01-01', end || '2025-01-31'];
+    const params = [start || new Date(Date.now()-30*86400000).toISOString().slice(0,10), end || new Date().toISOString().slice(0,10)];
     if (store && store !== 'All') {
       const rm = await getShopReverseMap();
       const accId = rm[store];
