@@ -149,25 +149,19 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
   const fPlanBk=asinPlanBkData||[];
   const isF=(seller&&seller!=="All")||(brand&&brand!=="All")||(asinF&&asinF!=="All");
   const[trendMetric,setTrendMetric]=useState("gp");
-  const[kpiMonth,setKpiMonth]=useState("All");
   const[tblMonth,setTblMonth]=useState("All");
   const metrics=[{k:"gp",l:"Gross Profit"},{k:"rv",l:"Revenue"},{k:"ad",l:"Ads Spend"},{k:"un",l:"Units"},{k:"se",l:"Sessions"},{k:"im",l:"Impressions"},{k:"cr",l:"Conv. Rate"},{k:"ct",l:"Click-Through Rate"}];
   const mK={gp:{a:"gpa",p:"gpp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"},se:{a:"sa",p:"sp"},im:{a:"ia",p:"ip"},cr:{a:"cra",p:"crp"},ct:{a:"cta",p:"ctp"}};
   
   const mpd=monthPlanData||[];
-  const hasData=mpd.length>0||fPlanBk.length>0;
-  const trendData=mpd.map(m=>{const ak=mK[trendMetric].a,pk=mK[trendMetric].p;return{m:m.m,Actual:m[ak],Plan:m[pk]}});
+  const hasData=mpd.some(m=>(m.gpa||0)+(m.gpp||0)+(m.ra||0)+(m.rp||0)>0)||fPlanBk.length>0;
+  const trendData=mpd.map(m=>{const ak=mK[trendMetric].a,pk2=mK[trendMetric].p;return{m:m.m,Actual:m[ak],Plan:m[pk2]}});
   const isCur=["gp","rv","ad"].includes(trendMetric);const isPct=["cr","ct"].includes(trendMetric);
-  const kpiData=useMemo(()=>{
-    const pk=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};const src=kpiMonth==="All"?pk:(()=>{const mi=MS.indexOf(kpiMonth);const m=mpd[mi];if(!m)return pk;return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:m.cra,p:m.crp},ct:{a:m.cta,p:m.ctp}}})();
-    return src;
-  },[kpiMonth,planKpi,mpd]);
-  // Scale monthly breakdown
+  const kpiData=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
   const fMonthPlan=mpd;
   const THD=["Month","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
   const AHDL=["ASIN","Brand","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
   return<div>
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:11,color:t.textMuted,fontWeight:600}}>KPI Month:</span><Sel value={kpiMonth} onChange={setKpiMonth} options={MS} label="All Months" t={t}/></div>
     {!hasData&&<div style={{padding:24,textAlign:"center",color:t.textMuted,fontSize:13,background:t.card,borderRadius:12,border:"1px solid "+t.cardBorder,marginBottom:16}}>📋 No plan data found for this year/filter combination. Try selecting a different year or adjusting filters.</div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t}/></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?kpiData.cr.a+"%":null} plan={kpiData.cr.p+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?kpiData.ct.a+"%":null} plan={kpiData.ct.p+"%"} t={t}/></div>
@@ -283,9 +277,17 @@ export default function App(){
         const ok=await checkBackend();setLive(ok);
         if(ok){
           const f=await api("filters").catch(()=>null);
-          if(f?.asins)setMasterList(f.asins.map(a=>({a:a.asin,b:a.brand,st:a.shop||a.brand,sl:a.seller})));
+          if(f?.asins){
+            // Create masterList with shop mapping — one entry per ASIN×shop
+            const ml=[];
+            f.asins.forEach(a=>{
+              const shops=a.shops&&a.shops.length?a.shops:[a.brand||"Unknown"];
+              shops.forEach(sh=>ml.push({a:a.asin,b:a.brand||"",st:sh,sl:a.seller||""}));
+            });
+            setMasterList(ml);
+          }
           const dr=await api("date-range").catch(()=>null);
-          if(dr){setDbRange(dr);const today=new Date().toISOString().slice(0,10);setEd(today);if(dr.defaultStart)setSd(dr.defaultStart);else{const s30=new Date(Date.now()-30*86400000).toISOString().slice(0,10);setSd(dr.minDate>s30?dr.minDate:s30);}}
+          if(dr){setDbRange(dr);if(dr.defaultEnd)setEd(dr.defaultEnd);if(dr.defaultStart)setSd(dr.defaultStart);}
           api("inventory/snapshot").then(d=>setInvData(d||{})).catch(()=>{});
           api("inventory/by-shop").then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
           api("inventory/stock-trend").then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))).catch(()=>{});
@@ -315,13 +317,13 @@ export default function App(){
         const daily=await api("exec/daily",p).catch(()=>[]);
         if(!cancelled)setFDaily((daily||[]).map(r=>{const dt=new Date(r.date);return{date:r.date,label:MS[dt.getMonth()]+" "+dt.getDate(),revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
         // ASINs
-        const asins=await api("product/asins",{start:sd,end:ed,store,seller}).catch(()=>[]);
+        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(()=>[]);
         if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
         // Shops
         const shops=await api("shops",{start:sd,end:ed,store,seller}).catch(()=>[]);
         if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
         // Team
-        const team=await api("team",{start:sd,end:ed,seller}).catch(()=>[]);
+        const team=await api("team",{start:sd,end:ed,seller,store}).catch(()=>[]);
         if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
       }catch(e){console.error("Fetch error:",e)}
       if(!cancelled)setLoading(false);
@@ -335,14 +337,46 @@ export default function App(){
     let cancelled=false;
     (async()=>{
       try{
-        const kpi=await api("plan/data",{year:planYear,month:planMonth!=="All"?planMonth:undefined,brand,seller,asin:asinF}).catch(()=>null);
-        if(!cancelled&&kpi)setPlanKpiState(kpi);
-        const actuals=await api("plan/actuals",{year:planYear,brand,seller,asin:asinF}).catch(()=>null);
-        if(!cancelled&&actuals){setMonthPlanState(actuals.monthly||[]);setAsinPlanBkState((actuals.asinBreakdown||[]).map(r=>({...r,sl:r.sl||""})));}
+        const[planRes,actualsRes]=await Promise.all([
+          api("plan/data",{year:planYear,brand,seller,asin:asinF}).catch(()=>null),
+          api("plan/actuals",{year:planYear,brand,seller,asin:asinF}).catch(()=>null)
+        ]);
+        if(cancelled)return;
+        const plan=planRes||{};const actuals=actualsRes||{};
+        const monthlyPlan=plan.monthlyPlan||{};const asinPlan=plan.asinPlan||{};
+        const monthlyActuals=actuals.monthly||[];const asinBk=actuals.asinBreakdown||[];
+
+        // Build planKpi: merge plan totals with actual totals
+        const pk=plan.kpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
+        // Fill actuals into kpi
+        const aT={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
+        monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;if(m.cra)aT.cr.push(m.cra);});
+        pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;
+        pk.cr.a=aT.cr.length?aT.cr.reduce((s,v)=>s+v,0)/aT.cr.length:0;
+        setPlanKpiState(pk);
+
+        // Build monthPlanData: merge plan + actuals per month
+        const mpd=MS.map((mName,i)=>{
+          const mn=i+1;const pp=monthlyPlan[mn]||{};const aa=monthlyActuals.find(m=>m.mn===mn)||{};
+          return{m:mName,gpa:aa.gpa||0,gpp:pp.gp||0,ra:aa.ra||0,rp:pp.rv||0,aa:aa.aa||0,ap:pp.ad||0,ua:aa.ua||0,up:pp.un||0,sa:aa.sa||0,sp:pp.se||0,ia:aa.ia||0,ip:pp.im||0,cra:aa.cra||0,crp:pp.cr||0,cta:aa.cta||0,ctp:pp.ct||0};
+        });
+        setMonthPlanState(mpd);
+
+        // Build asinBreakdown: merge plan + actuals per ASIN
+        const allAsins=new Set([...Object.keys(asinPlan),...asinBk.map(a=>a.a)]);
+        const abk=[...allAsins].map(asin=>{
+          const pd=asinPlan[asin]||{brand:"",months:{}};const ad=asinBk.find(a=>a.a===asin)||{};
+          // Sum plan across months
+          let pTot={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
+          Object.values(pd.months||{}).forEach(m=>{pTot.rv+=m.rv||0;pTot.gp+=m.gp||0;pTot.ad+=m.ad||0;pTot.un+=m.un||0;pTot.se+=m.se||0;if(m.cr)pTot.cr.push(m.cr);});
+          const crP=pTot.cr.length?pTot.cr.reduce((s,v)=>s+v,0)/pTot.cr.length:0;
+          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0};
+        }).sort((a,b)=>(b.ga||0)-(a.ga||0));
+        setAsinPlanBkState(abk);
       }catch(e){console.error("Plan fetch error:",e)}
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,planYear,planMonth,brand,seller,asinF]);
+  },[live,dbConnecting,planYear,brand,seller,asinF]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
@@ -378,7 +412,7 @@ export default function App(){
         {/* FILTER BAR */}
         {pg!=="inv"&&(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           {pg==="exec"&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={dbRange?.maxDate||defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
-          {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/><Sel value={planMonth} onChange={setPlanMonth} options={MS.map((_,i)=>String(i+1))} label="All Months" t={t} renderLabel={v=>MS[parseInt(v)-1]}/></>}
+          {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
           {["prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={dbRange?.maxDate||defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {showStore&&<Sel value={store} onChange={setStore} options={opts.stores} label="All Shops" t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
