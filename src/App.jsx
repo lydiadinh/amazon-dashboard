@@ -307,7 +307,23 @@ export default function App(){
             setFilterError("Filter API error: "+filterErr.message);
           }
           const dr=await api("date-range").catch(()=>null);
-          if(dr){setDbRange(dr);}
+          if(dr){
+            setDbRange(dr);
+            // Keep end=today, but start from data range so queries return results
+            if(dr.maxDate){
+              const dbMax=new Date(dr.maxDate+"T00:00:00");
+              const today=new Date(defaultEnd+"T00:00:00");
+              // If DB max date < our default start, adjust start to cover actual data
+              const defStart=new Date(defaultStart+"T00:00:00");
+              if(dbMax < defStart){
+                // Data doesn't reach our default range - use last 30d of actual data
+                const adjStart=new Date(dbMax); adjStart.setDate(adjStart.getDate()-29);
+                const s=adjStart.toISOString().slice(0,10);
+                console.log("Adjusted start to",s,"(DB max:",dr.maxDate,", default was:",defaultStart,")");
+                setSd(s < (dr.minDate||s) ? dr.minDate : s);
+              }
+            }
+          }
           api("inventory/snapshot").then(d=>setInvData(d||{})).catch(()=>{});
           api("inventory/by-shop").then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
           api("inventory/stock-trend").then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))).catch(()=>{});
@@ -325,7 +341,10 @@ export default function App(){
     setLoading(true);
     (async()=>{
       try{
-        const summary=await api("exec/summary",p).catch(()=>EMPTY_EM);
+        console.log("=== DATA FETCH START ===");
+        console.log("Params:",JSON.stringify(p));
+        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);return EMPTY_EM;});
+        console.log("exec/summary:",typeof summary,summary?.sales!==undefined?"sales="+summary.sales:"NO SALES FIELD",JSON.stringify(summary).slice(0,300));
         if(!cancelled)setEm(summary);
         // Previous period
         const days=Math.max(1,Math.round((new Date(ed)-new Date(sd))/86400000)+1);
@@ -334,17 +353,22 @@ export default function App(){
         const prev=await api("exec/summary",{...p,start:ps.toISOString().slice(0,10),end:pe.toISOString().slice(0,10)}).catch(()=>null);
         if(!cancelled)setPrevEm(prev&&prev.sales?prev:null);
         // Daily
-        const daily=await api("exec/daily",p).catch(()=>[]);
+        const daily=await api("exec/daily",p).catch(e=>{console.error("exec/daily ERROR:",e.message);return[];});
+        console.log("exec/daily:",Array.isArray(daily)?daily.length+" rows":"NOT ARRAY",JSON.stringify(daily).slice(0,200));
         if(!cancelled)setFDaily((daily||[]).map(r=>{const dt=new Date(r.date);return{date:r.date,label:MS[dt.getMonth()]+" "+dt.getDate(),revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
         // ASINs
-        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(()=>[]);
+        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
+        console.log("product/asins:",Array.isArray(asins)?asins.length+" rows":"NOT ARRAY");
         if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
         // Shops
-        const shops=await api("shops",{start:sd,end:ed,store,seller}).catch(()=>[]);
+        const shops=await api("shops",{start:sd,end:ed,store,seller}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
+        console.log("shops:",Array.isArray(shops)?shops.length+" rows":"NOT ARRAY");
         if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
         // Team
-        const team=await api("team",{start:sd,end:ed,seller,store}).catch(()=>[]);
+        const team=await api("team",{start:sd,end:ed,seller,store}).catch(e=>{console.error("team ERROR:",e.message);return[];});
+        console.log("team:",Array.isArray(team)?team.length+" rows":"NOT ARRAY");
         if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
+        console.log("=== DATA FETCH DONE ===");
       }catch(e){console.error("Fetch error:",e)}
       if(!cancelled)setLoading(false);
     })();
