@@ -1,42 +1,28 @@
-// API helper — auto-detect backend, fallback to demo data
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
-let _backendAvailable = null;
+const BASE = window.location.origin;
 
 export async function checkBackend() {
-  if (_backendAvailable !== null) return _backendAvailable;
   try {
-    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
-    const data = await res.json();
-    _backendAvailable = data.database === 'connected';
-    console.log(_backendAvailable ? '✅ Backend connected with database' : '⚠️ Backend running but no database');
-    return _backendAvailable;
-  } catch {
-    _backendAvailable = false;
-    console.log('⚠️ No backend detected — using demo data');
-    return false;
-  }
+    const r = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    return d.status === 'ok' && d.database === 'connected';
+  } catch { return false; }
 }
 
 export async function api(path, params = {}) {
-  const qs = new URLSearchParams(params).toString();
-  const url = `${API_BASE}/api/${path}${qs ? '?' + qs : ''}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  const qs = Object.entries(params).filter(([,v]) => v != null && v !== '' && v !== 'All').map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const url = `${BASE}/api/${path}${qs ? '?' + qs : ''}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
 }
 
 export async function apiPost(path, body) {
-  const res = await fetch(`${API_BASE}/api/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const r = await fetch(`${BASE}/api/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
 }
 
-export function isLive() {
-  return _backendAvailable === true;
-}
+export const isLive = false; // will be determined at runtime
