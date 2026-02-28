@@ -224,12 +224,28 @@ app.get('/api/debug/data', async (req, res) => {
 
     // Test team query 
     try {
-      const r = await q(`SELECT COALESCE(a.seller, 'Unassigned') as seller, SUM(p.salesOrganic + p.salesPPC) as revenue, COUNT(DISTINCT p.asin) as asinCount
+      const r = await q(`SELECT COALESCE(NULLIF(a.seller,''), 'Unassigned') as seller, SUM(p.salesOrganic + p.salesPPC) as revenue, COUNT(DISTINCT p.asin) as asinCount
         FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
         WHERE p.date BETWEEN ? AND ?
-        GROUP BY COALESCE(a.seller, 'Unassigned') ORDER BY revenue DESC`, [sd, ed]);
-      results.tests.teamQuery = { ok: true, count: r.length, sample: r.slice(0, 3) };
+        GROUP BY COALESCE(NULLIF(a.seller,''), 'Unassigned') ORDER BY revenue DESC`, [sd, ed]);
+      results.tests.teamQuery = { ok: true, count: r.length, sample: r.slice(0, 5) };
     } catch(e) { results.tests.teamQuery = { ok: false, error: e.message }; }
+
+    // Test asin_plan
+    try {
+      const cols = await q('SHOW COLUMNS FROM asin_plan');
+      const colNames = cols.map(c => c.Field);
+      const metrics = await q('SELECT DISTINCT metrics FROM asin_plan LIMIT 20');
+      const sample = await q('SELECT * FROM asin_plan LIMIT 5');
+      const count = await q('SELECT COUNT(*) as cnt FROM asin_plan');
+      results.tests.asinPlan = { ok: true, columns: colNames, distinctMetrics: metrics.map(m=>m.metrics), totalRows: count[0]?.cnt, sampleRows: sample };
+    } catch(e) { results.tests.asinPlan = { ok: false, error: e.message }; }
+
+    // Test asin table seller field
+    try {
+      const r = await q('SELECT seller, COUNT(*) as cnt FROM asin WHERE seller IS NOT NULL AND LENGTH(seller) > 0 GROUP BY seller ORDER BY cnt DESC LIMIT 10');
+      results.tests.asinSellers = { ok: true, count: r.length, sample: r };
+    } catch(e) { results.tests.asinSellers = { ok: false, error: e.message }; }
 
     // Check what frontend sends
     results.notes = {
@@ -574,24 +590,34 @@ app.get('/api/team', async (req, res) => {
     const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     let where = 'WHERE p.date BETWEEN ? AND ?';
     const params = [start || ago30, end || today];
+    console.log('Team query params:', { start: params[0], end: params[1], seller, store });
+    
     if (seller && seller !== 'All') { where += ' AND a.seller = ?'; params.push(seller); }
     if (store && store !== 'All') {
       const rm = await getShopReverseMap();
       const accId = rm[store];
+      console.log('Team store filter:', store, '→ accountId:', accId);
       if (accId) { where += ' AND p.accountId = ?'; params.push(accId); }
     }
 
     const rows = await q(`
-      SELECT COALESCE(a.seller, 'Unassigned') as seller,
+      SELECT COALESCE(NULLIF(a.seller,''), 'Unassigned') as seller,
         SUM(p.salesOrganic + p.salesPPC) as revenue,
-        SUM(p.netProfit) as netProfit,
+        SUM(COALESCE(p.netProfit,0)) as netProfit,
         SUM(p.unitsOrganic + p.unitsPPC) as units,
         COUNT(DISTINCT p.asin) as asinCount
       FROM seller_board_product p
       LEFT JOIN asin a ON p.asin = a.asin
       ${where}
-      GROUP BY COALESCE(a.seller, 'Unassigned') ORDER BY revenue DESC
+      GROUP BY COALESCE(NULLIF(a.seller,''), 'Unassigned') ORDER BY revenue DESC
     `, params);
+
+    console.log('Team query returned', rows.length, 'rows');
+    if (rows.length === 0) {
+      // Fallback: try without JOIN to see if data exists
+      const check = await q('SELECT COUNT(*) as cnt FROM seller_board_product WHERE date BETWEEN ? AND ?', [params[0], params[1]]);
+      console.log('Team fallback check: seller_board_product rows in range:', check[0]?.cnt);
+    }
 
     res.json(rows.map(r => {
       const rev = parseFloat(r.revenue) || 0;
@@ -602,7 +628,8 @@ app.get('/api/team', async (req, res) => {
       };
     }));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('TEAM ERROR:', e.message, e.stack?.split('\n')[1]);
+    res.status(500).json({ error: e.message, query: 'team' });
   }
 });
 
@@ -738,18 +765,15 @@ app.get('/api/plan/data', async (req, res) => {
     const { year, month, brand, seller, asin: af } = req.query;
     const yr = year || new Date().getFullYear();
     
-    // Try to detect year column - could be 'year' or might not exist
-    let where, params;
-    try {
-      // First try with backtick-escaped year column
-      await q('SELECT `year` FROM asin_plan LIMIT 1');
-      where = 'WHERE ap.`year` = ?';
-      params = [yr];
-    } catch {
-      // No year column - query all plan data
-      where = 'WHERE 1=1';
-      params = [];
-    }
+    // Auto-detect asin_plan columns
+    let cols;
+    try { cols = (await q('SHOW COLUMNS FROM asin_plan')).map(c => c.Field); }
+    catch { return res.json({ kpi: {}, monthlyPlan: {}, asinPlan: {} }); }
+    
+    const hasYear = cols.includes('year');
+    let where = hasYear ? 'WHERE ap.`year` = ?' : 'WHERE 1=1';
+    let params = hasYear ? [yr] : [];
+    
     if (month && month !== 'All') {
       const mn = parseInt(month);
       if (mn >= 1 && mn <= 12) { where += ' AND ap.month_num = ?'; params.push(mn); }
@@ -766,12 +790,36 @@ app.get('/api/plan/data', async (req, res) => {
       ORDER BY ap.month_num, ap.metrics
     `, params);
 
+    // Auto-discover metric names from data
+    const distinctMetrics = [...new Set(rows.map(r => r.metrics))];
+    console.log('Plan data:', rows.length, 'rows, year:', yr, 'hasYearCol:', hasYear, 'metrics found:', distinctMetrics);
+
+    // Dynamic metrics mapping: try METRICS_MAP first, then auto-detect by pattern
+    function mapMetric(m) {
+      if (!m) return null;
+      const mapped = METRICS_MAP[m] || METRICS_MAP[m.toLowerCase()] || METRICS_MAP[m.trim()];
+      if (mapped) return mapped;
+      // Auto-detect by keyword
+      const lm = m.toLowerCase().trim();
+      if (lm.includes('revenue') || lm.includes('sales') || lm === 'rv') return 'rv';
+      if (lm.includes('gross') && lm.includes('profit') || lm === 'gp') return 'gp';
+      if (lm.includes('ad') && (lm.includes('spend') || lm.includes('cost')) || lm === 'ads') return 'ad';
+      if (lm.includes('unit') || lm === 'un') return 'un';
+      if (lm.includes('session') || lm === 'se') return 'se';
+      if (lm.includes('impression') || lm === 'im') return 'im';
+      if (lm.includes('conversion') || lm.includes('cvr') || lm === 'cr') return 'cr';
+      if (lm.includes('click') || lm.includes('ctr') || lm === 'ct') return 'ct';
+      if (lm.includes('net') && lm.includes('profit') || lm === 'np') return 'gp'; // fallback
+      console.log('Unknown plan metric:', m);
+      return null;
+    }
+
     // Aggregate plan data by month and metric
-    const monthlyPlan = {}; // {month_num: {rv: sum, gp: sum, ...}}
-    const asinPlan = {};    // {asin: {month_num: {rv: sum, ...}}}
+    const monthlyPlan = {};
+    const asinPlan = {};
     rows.forEach(r => {
-      const mk = METRICS_MAP[r.metrics] || METRICS_MAP[r.metrics?.toLowerCase()] || METRICS_MAP[r.metrics?.trim()] || null;
-      if (!mk) { console.log('Unknown plan metric:', r.metrics); return; }
+      const mk = mapMetric(r.metrics);
+      if (!mk) return;
       const mn = r.month_num;
       const val = parseFloat(r.value) || 0;
       if (!monthlyPlan[mn]) monthlyPlan[mn] = {};
