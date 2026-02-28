@@ -144,6 +144,106 @@ app.get('/api/debug/filters', async (req, res) => {
   res.json(results);
 });
 
+/* ═══════════ DEBUG DATA TEST ═══════════ */
+app.get('/api/debug/data', async (req, res) => {
+  const results = { version: SERVER_VERSION, tests: {} };
+  try {
+    // Get date range first
+    const dr = await q('SELECT MIN(date) as mi, MAX(date) as mx FROM seller_board_day');
+    const minD = dr[0]?.mi, maxD = dr[0]?.mx;
+    const start = new Date(maxD); start.setDate(start.getDate() - 29);
+    const sd = start.toISOString().slice(0, 10);
+    const ed = new Date(maxD).toISOString().slice(0, 10);
+    results.dateRange = { dbMin: minD, dbMax: maxD, queryStart: sd, queryEnd: ed };
+
+    // Test seller_board_day (used by exec/summary when no entity filters)
+    try {
+      const r = await q(`SELECT SUM(sales) as sales, SUM(units) as units, COUNT(*) as rowCount 
+        FROM seller_board_day WHERE date BETWEEN ? AND ?`, [sd, ed]);
+      results.tests.sellerBoardDay = { ok: true, data: r[0] };
+    } catch(e) { results.tests.sellerBoardDay = { ok: false, error: e.message }; }
+
+    // Test seller_board_product (used by product/asins, team)
+    try {
+      const r = await q(`SELECT SUM(salesOrganic + salesPPC) as revenue, COUNT(*) as rowCount, COUNT(DISTINCT asin) as asinCount
+        FROM seller_board_product WHERE date BETWEEN ? AND ?`, [sd, ed]);
+      results.tests.sellerBoardProduct = { ok: true, data: r[0] };
+    } catch(e) { results.tests.sellerBoardProduct = { ok: false, error: e.message }; }
+
+    // Test exec/daily query
+    try {
+      const r = await q(`SELECT DATE(date) as date, SUM(sales) as revenue, SUM(netProfit) as netProfit, SUM(units) as units
+        FROM seller_board_day WHERE date BETWEEN ? AND ? GROUP BY DATE(date) ORDER BY date LIMIT 3`, [sd, ed]);
+      results.tests.dailyQuery = { ok: true, count: r.length, sample: r };
+    } catch(e) { results.tests.dailyQuery = { ok: false, error: e.message }; }
+
+    // Test the exec/summary exact query used in code
+    try {
+      const r = await q(`
+        SELECT SUM(sales) as sales, SUM(units) as units, SUM(orders) as orders,
+          SUM(COALESCE(refunds,0)) as refunds,
+          SUM(COALESCE(advCost,0)) as advCost,
+          SUM(COALESCE(shippingCost,0)) as shippingCost,
+          SUM(COALESCE(refundCost,0)) as refundCost,
+          SUM(COALESCE(amazonFees,0)) as amazonFees,
+          SUM(COALESCE(costOfGoods,0)) as cogs,
+          SUM(COALESCE(netProfit,0)) as netProfit,
+          SUM(COALESCE(estimatedPayout,0)) as estPayout
+        FROM seller_board_day WHERE date BETWEEN ? AND ?`, [sd, ed]);
+      results.tests.execSummarySimple = { ok: true, data: r[0] };
+    } catch(e) { results.tests.execSummarySimple = { ok: false, error: e.message }; }
+
+    // Test the ACTUAL exec/summary query (uses salesOrganic + salesPPC)
+    try {
+      const r = await q(`
+        SELECT
+          SUM(salesOrganic + salesPPC) as sales,
+          SUM(unitsOrganic + unitsPPC) as units,
+          SUM(orders) as orders,
+          SUM(COALESCE(netProfit,0)) as netProfit,
+          SUM(COALESCE(sessions,0)) as sessions,
+          SUM(COALESCE(grossProfit,0)) as grossProfit
+        FROM seller_board_day WHERE date BETWEEN ? AND ?`, [sd, ed]);
+      results.tests.execSummaryActual = { ok: true, data: r[0] };
+    } catch(e) { results.tests.execSummaryActual = { ok: false, error: e.message }; }
+
+    // Show actual column names in seller_board_day
+    try {
+      const cols = await q('SHOW COLUMNS FROM seller_board_day');
+      results.tests.sellerBoardDayCols = { ok: true, columns: cols.map(c => c.Field) };
+    } catch(e) { results.tests.sellerBoardDayCols = { ok: false, error: e.message }; }
+      results.tests.execSummaryQuery = { ok: true, data: r[0] };
+    } catch(e) { results.tests.execSummaryQuery = { ok: false, error: e.message }; }
+
+    // Test shops query
+    try {
+      const sm = await getShopMap();
+      const r = await q(`SELECT accountId, SUM(sales) as revenue, SUM(netProfit) as netProfit
+        FROM seller_board_day WHERE date BETWEEN ? AND ? GROUP BY accountId`, [sd, ed]);
+      results.tests.shopsQuery = { ok: true, count: r.length, sample: r.slice(0, 3).map(x => ({...x, shop: sm[x.accountId]})) };
+    } catch(e) { results.tests.shopsQuery = { ok: false, error: e.message }; }
+
+    // Test team query 
+    try {
+      const r = await q(`SELECT COALESCE(a.seller, 'Unassigned') as seller, SUM(p.salesOrganic + p.salesPPC) as revenue, COUNT(DISTINCT p.asin) as asinCount
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
+        WHERE p.date BETWEEN ? AND ?
+        GROUP BY COALESCE(a.seller, 'Unassigned') ORDER BY revenue DESC`, [sd, ed]);
+      results.tests.teamQuery = { ok: true, count: r.length, sample: r.slice(0, 3) };
+    } catch(e) { results.tests.teamQuery = { ok: false, error: e.message }; }
+
+    // Check what frontend sends
+    results.notes = {
+      frontendDefaultStart: 'new Date()-30d = ' + new Date(Date.now()-30*86400000).toISOString().slice(0,10),
+      frontendDefaultEnd: 'new Date() = ' + new Date().toISOString().slice(0,10),
+      possibleIssue: sd !== new Date(Date.now()-30*86400000).toISOString().slice(0,10) ? 
+        'DB maxDate (' + ed + ') differs from today (' + new Date().toISOString().slice(0,10) + ') - frontend may query outside data range!' : 'Date ranges match'
+    };
+
+  } catch(e) { results.globalError = e.message; }
+  res.json(results);
+});
+
 /* ═══════════ DATE RANGE ═══════════ */
 app.get('/api/date-range', async (req, res) => {
   try {
