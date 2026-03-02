@@ -36,8 +36,9 @@ try {
 
 async function q(sql, params = []) {
   if (!pool) throw new Error('Database not connected');
-  const [rows] = await pool.execute(sql, params);
-  return rows;
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Query timeout (25s)')), 25000));
+  const query = pool.execute(sql, params).then(([rows]) => rows);
+  return Promise.race([query, timeout]);
 }
 
 /* ═══════════ HELPERS ═══════════ */
@@ -222,12 +223,14 @@ app.get('/api/debug/data', async (req, res) => {
       results.tests.shopsQuery = { ok: true, count: r.length, sample: r.slice(0, 3).map(x => ({...x, shop: sm[x.accountId]})) };
     } catch(e) { results.tests.shopsQuery = { ok: false, error: e.message }; }
 
-    // Test team query 
+    // Test team query (split approach - no JOIN)
     try {
-      const r = await q(`SELECT COALESCE(NULLIF(a.seller,''), 'Unassigned') as seller, SUM(p.salesOrganic + p.salesPPC) as revenue, COUNT(DISTINCT p.asin) as asinCount
-        FROM seller_board_product p LEFT JOIN asin a ON p.asin = a.asin
-        WHERE p.date BETWEEN ? AND ?
-        GROUP BY COALESCE(NULLIF(a.seller,''), 'Unassigned') ORDER BY revenue DESC`, [sd, ed]);
+      const sellerMap = {};
+      (await q('SELECT asin, COALESCE(NULLIF(seller,\'\'), \'Unassigned\') as seller FROM asin')).forEach(r => { sellerMap[r.asin] = r.seller; });
+      const asinAgg = await q('SELECT asin, SUM(salesOrganic+salesPPC) as revenue FROM seller_board_product WHERE date BETWEEN ? AND ? GROUP BY asin', [sd, ed]);
+      const byS = {};
+      asinAgg.forEach(r => { const sl = sellerMap[r.asin] || 'Unassigned'; byS[sl] = (byS[sl]||0) + (parseFloat(r.revenue)||0); });
+      const r = Object.entries(byS).map(([seller,revenue])=>({seller,revenue})).sort((a,b)=>b.revenue-a.revenue);
       results.tests.teamQuery = { ok: true, count: r.length, sample: r.slice(0, 5) };
     } catch(e) { results.tests.teamQuery = { ok: false, error: e.message }; }
 
@@ -614,48 +617,62 @@ app.get('/api/team', async (req, res) => {
     const { start, end, seller, store, brand, asin: af } = req.query;
     const today = new Date().toISOString().slice(0, 10);
     const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    let where = 'WHERE p.date BETWEEN ? AND ?';
-    const params = [start || ago30, end || today];
-    console.log('Team query params:', { start: params[0], end: params[1], seller, store, brand, asin: af });
-    
-    if (seller && seller !== 'All') { where += ' AND a.seller = ?'; params.push(seller); }
-    if (brand && brand !== 'All') { where += ' AND a.store = ?'; params.push(brand); }
-    if (af && af !== 'All') { where += ' AND p.asin = ?'; params.push(af); }
+    const s = start || ago30, e2 = end || today;
+    console.log('Team query params:', { start: s, end: e2, seller, store, brand, asin: af });
+
+    // Strategy: 2 small queries instead of 1 big JOIN
+    // Query 1: Get asin→seller mapping (fast, small table)
+    const sellerMap = {};
+    const asinRows = await q('SELECT asin, COALESCE(NULLIF(seller,\'\'), \'Unassigned\') as seller, store FROM asin');
+    asinRows.forEach(r => { sellerMap[r.asin] = { seller: r.seller, store: r.store }; });
+
+    // Query 2: Aggregate from seller_board_product (no JOIN, uses date index)
+    let where = 'WHERE date BETWEEN ? AND ?';
+    const params = [s, e2];
+    if (af && af !== 'All') { where += ' AND asin = ?'; params.push(af); }
     if (store && store !== 'All') {
       const rm = await getShopReverseMap();
       const accId = rm[store];
-      console.log('Team store filter:', store, '→ accountId:', accId);
-      if (accId) { where += ' AND p.accountId = ?'; params.push(accId); }
+      if (accId) { where += ' AND accountId = ?'; params.push(accId); }
     }
 
     const rows = await q(`
-      SELECT COALESCE(NULLIF(a.seller,''), 'Unassigned') as seller,
-        SUM(p.salesOrganic + p.salesPPC) as revenue,
-        SUM(COALESCE(p.netProfit,0)) as netProfit,
-        SUM(p.unitsOrganic + p.unitsPPC) as units,
-        COUNT(DISTINCT p.asin) as asinCount
-      FROM seller_board_product p
-      LEFT JOIN asin a ON p.asin = a.asin
+      SELECT asin,
+        SUM(salesOrganic + salesPPC) as revenue,
+        SUM(COALESCE(netProfit,0)) as netProfit,
+        SUM(unitsOrganic + unitsPPC) as units
+      FROM seller_board_product
       ${where}
-      GROUP BY COALESCE(NULLIF(a.seller,''), 'Unassigned') ORDER BY revenue DESC
-      LIMIT 100
+      GROUP BY asin
     `, params);
 
-    console.log('Team query returned', rows.length, 'rows');
-    if (rows.length === 0) {
-      // Fallback: try without JOIN to see if data exists
-      const check = await q('SELECT COUNT(*) as cnt FROM seller_board_product WHERE date BETWEEN ? AND ?', [params[0], params[1]]);
-      console.log('Team fallback check: seller_board_product rows in range:', check[0]?.cnt);
-    }
+    // Merge in JS: group by seller
+    const sellerAgg = {};
+    rows.forEach(r => {
+      const info = sellerMap[r.asin] || { seller: 'Unassigned', store: '' };
+      // Apply seller/brand filters in JS
+      if (seller && seller !== 'All' && info.seller !== seller) return;
+      if (brand && brand !== 'All' && info.store !== brand) return;
+      
+      const sl = info.seller || 'Unassigned';
+      if (!sellerAgg[sl]) sellerAgg[sl] = { revenue: 0, netProfit: 0, units: 0, asins: new Set() };
+      sellerAgg[sl].revenue += parseFloat(r.revenue) || 0;
+      sellerAgg[sl].netProfit += parseFloat(r.netProfit) || 0;
+      sellerAgg[sl].units += parseInt(r.units) || 0;
+      sellerAgg[sl].asins.add(r.asin);
+    });
 
-    res.json(rows.map(r => {
-      const rev = parseFloat(r.revenue) || 0;
-      const np = parseFloat(r.netProfit) || 0;
-      return {
-        seller: r.seller, revenue: rev, netProfit: np, units: parseInt(r.units) || 0,
-        margin: rev > 0 ? (np / rev * 100) : 0, asinCount: parseInt(r.asinCount) || 0,
-      };
-    }));
+    const result = Object.entries(sellerAgg)
+      .map(([sl, d]) => ({
+        seller: sl, revenue: d.revenue, netProfit: d.netProfit,
+        units: d.units, margin: d.revenue > 0 ? (d.netProfit / d.revenue * 100) : 0,
+        asinCount: d.asins.size,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 100);
+
+    console.log('Team query returned', result.length, 'sellers from', rows.length, 'asins');
+    res.json(result);
   } catch (e) {
     console.error('TEAM ERROR:', e.message, e.stack?.split('\n')[1]);
     res.status(500).json({ error: e.message, query: 'team' });
