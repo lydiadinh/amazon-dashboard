@@ -55,7 +55,7 @@ function AsinSel({value,onChange,options,label,t}){
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
   const filtered=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
   return<div ref={ref} style={{position:"relative",display:"inline-block"}}><button onClick={()=>{setOpen(!open);setQ("")}} style={{background:t.card,color:value==="All"?t.textMuted:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:value==="All"?500:700,cursor:"pointer",minWidth:100,textAlign:"left"}}>{value==="All"?label:value} ▾</button>
-    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,boxShadow:"0 4px 16px "+t.shadow,minWidth:180,maxHeight:280,display:"flex",flexDirection:"column"}}><div style={{padding:4,borderBottom:"1px solid "+t.divider}}><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ASIN..." autoFocus style={{width:"100%",padding:"5px 8px",border:"1px solid "+t.inputBorder,borderRadius:5,fontSize:11,background:t.bg,color:t.text,outline:"none",boxSizing:"border-box"}}/></div><div style={{overflowY:"auto",flex:1}}><div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:value==="All"?700:400,color:value==="All"?t.primary:t.text,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>{filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:10,fontFamily:"monospace",cursor:"pointer",fontWeight:value===o?700:400,color:value===o?t.primary:t.text,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:10,color:t.textMuted}}>No results</div>}</div></div>}
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,boxShadow:"0 4px 16px "+t.shadow,minWidth:180,maxHeight:280,display:"flex",flexDirection:"column"}}><div style={{padding:4,borderBottom:"1px solid "+t.divider}}><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ASIN..." autoFocus style={{width:"100%",padding:"5px 8px",border:"1px solid "+t.inputBorder,borderRadius:5,fontSize:11,background:t.card,color:t.text,outline:"none",boxSizing:"border-box"}}/></div><div style={{overflowY:"auto",flex:1}}><div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:value==="All"?700:400,color:value==="All"?t.primary:t.text,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>{filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:10,fontFamily:"monospace",cursor:"pointer",fontWeight:value===o?700:400,color:value===o?t.primary:t.text,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:10,color:t.textMuted}}>No results</div>}</div></div>}
   </div>;
 }
 
@@ -187,7 +187,7 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF}){
     {!hasData&&<div style={{padding:24,textAlign:"center",color:t.textMuted,fontSize:13,background:t.card,borderRadius:12,border:"1px solid "+t.cardBorder,marginBottom:16}}>📋 No plan data found for this year/filter combination. Try selecting a different year or adjusting filters.</div>}
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:11,color:t.textMuted,fontWeight:600}}>KPI Month:</span><Sel value={kpiMonth} onChange={setKpiMonth} options={MS} label="All Months" t={t}/></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?kpiData.cr.a+"%":null} plan={kpiData.cr.p+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?kpiData.ct.a+"%":null} plan={kpiData.ct.p+"%"} t={t}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?(Math.round(kpiData.cr.a*100)/100)+"%":null} plan={(Math.round(kpiData.cr.p*100)/100)+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?(Math.round(kpiData.ct.a*100)/100)+"%":null} plan={(Math.round(kpiData.ct.p*100)/100)+"%"} t={t}/></div>
     <Sec title="Trend — Actual vs Plan" icon="📊" t={t} action={<select value={trendMetric} onChange={e=>setTrendMetric(e.target.value)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:t.primary,cursor:"pointer"}}>{metrics.map(m=><option key={m.k} value={m.k}>{m.l}</option>)}</select>}><Cd t={t}><ResponsiveContainer width="100%" height={260}><ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="m" tick={{fill:t.textSec,fontSize:10}}/><YAxis tick={{fill:t.textMuted,fontSize:10}} tickFormatter={v=>isCur?$s(v):isPct?v+"%":N(v)}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Actual" fill={t.primary} radius={[4,4,0,0]}/><Line type="monotone" dataKey="Plan" stroke={t.orange} strokeWidth={2} strokeDasharray="5 3" dot={{r:3,fill:t.orange}}/></ComposedChart></ResponsiveContainer></Cd></Sec>
     <Sec title="Monthly Breakdown — All Metrics (A / P / Gap)" icon="📋" t={t} action={isF&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⚠️ Filtered by entity</span>}><div style={{overflowX:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr>{THD.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i===0?60:100}}>{h}</th>)}</tr></thead><tbody>{mpd.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.m}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider}}>Each cell: <strong style={{color:t.text}}>Actual</strong> / <span>Plan</span> / <span style={{color:t.green}}>Gap</span></div></div></Sec>
     <Sec title="⭐ ASIN Breakdown" icon="📋" t={t} action={<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:t.textMuted}}>Month:</span><Sel value={tblMonth} onChange={setTblMonth} options={MS} label="All Months" t={t}/></div>}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{AHDL.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<=1?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i<=1?70:100}}>{h}</th>)}</tr></thead><tbody>{fPlanBk.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:10,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.br}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r.gp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fPlanBk.length} ASINs · Ads: lower = better (reversed color)</div></div></Sec>
@@ -268,7 +268,7 @@ export default function App(){
   const[asinF,setAsinF]=useState("All");
   const[planYear,setPlanYear]=useState(String(new Date().getFullYear()));
   const planYearOpts=useMemo(()=>{const c=new Date().getFullYear();return[String(c-1),String(c),String(c+1)]},[]);
-  const clearDates=()=>{setSd(defaultStart);setEd(defaultEnd);setActivePeriod(null)};
+  const clearDates=()=>{if(dbRange?.defaultStart)setSd(dbRange.defaultStart);else setSd(defaultStart);if(dbRange?.defaultEnd)setEd(dbRange.defaultEnd);else setEd(defaultEnd);setActivePeriod(null)};
 
   // ═══════════ LIVE DATA STATE ═══════════
   const[em,setEm]=useState(EMPTY_EM);
@@ -325,19 +325,19 @@ export default function App(){
           const dr=await api("date-range").catch(()=>null);
           if(dr){
             setDbRange(dr);
-            // Keep end=today, but start from data range so queries return results
-            if(dr.maxDate){
+            // Use DB-based defaults for date range (server returns defaultEnd = dbMaxDate)
+            if(dr.defaultStart && dr.defaultEnd){
+              console.log("Setting dates from DB range: start=",dr.defaultStart,"end=",dr.defaultEnd,"(DB min:",dr.minDate,"max:",dr.maxDate,")");
+              setSd(dr.defaultStart);
+              setEd(dr.defaultEnd);
+            } else if(dr.maxDate){
+              // Fallback: use maxDate as end, 30 days before as start
               const dbMax=new Date(dr.maxDate+"T00:00:00");
-              const today=new Date(defaultEnd+"T00:00:00");
-              // If DB max date < our default start, adjust start to cover actual data
-              const defStart=new Date(defaultStart+"T00:00:00");
-              if(dbMax < defStart){
-                // Data doesn't reach our default range - use last 30d of actual data
-                const adjStart=new Date(dbMax); adjStart.setDate(adjStart.getDate()-29);
-                const s=adjStart.toISOString().slice(0,10);
-                console.log("Adjusted start to",s,"(DB max:",dr.maxDate,", default was:",defaultStart,")");
-                setSd(s < (dr.minDate||s) ? dr.minDate : s);
-              }
+              const adjStart=new Date(dbMax); adjStart.setDate(adjStart.getDate()-29);
+              const s=adjStart.toISOString().slice(0,10);
+              console.log("Fallback dates: start=",s,"end=",dr.maxDate);
+              setSd(s < (dr.minDate||s) ? dr.minDate : s);
+              setEd(dr.maxDate);
             }
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
@@ -359,7 +359,7 @@ export default function App(){
       try{
         console.log("=== DATA FETCH START ===");
         console.log("Params:",JSON.stringify(p));
-        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);return EMPTY_EM;});
+        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Exec: '+e.message);return EMPTY_EM;});
         console.log("exec/summary:",typeof summary,summary?.sales!==undefined?"sales="+summary.sales:"NO SALES FIELD",JSON.stringify(summary).slice(0,300));
         if(!cancelled)setEm(summary);
         // Previous period
@@ -412,9 +412,10 @@ export default function App(){
         const pk=plan.kpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
         // Fill actuals into kpi
         const aT={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-        monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;if(m.cra)aT.cr.push(m.cra);});
-        pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;
+        monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;aT.im+=m.ia||0;if(m.cra)aT.cr.push(m.cra);if(m.cta)aT.ct.push(m.cta);});
+        pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;pk.im.a=aT.im;
         pk.cr.a=aT.cr.length?aT.cr.reduce((s,v)=>s+v,0)/aT.cr.length:0;
+        pk.ct.a=aT.ct.length?aT.ct.reduce((s,v)=>s+v,0)/aT.ct.length:0;
         setPlanKpiState(pk);
 
         // Build monthPlanData: merge plan + actuals per month
@@ -437,7 +438,7 @@ export default function App(){
           const mData={};
           allMonths.forEach(mn=>{
             const pm=pd.months?.[mn]||{};const am=ad.months?.[mn]||{};
-            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:0,ctp:0};
+            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:am.im||0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:am.ct||0,ctp:pm.ct||0};
           });
           return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0,mData};
         }).sort((a,b)=>(b.ga||0)-(a.ga||0));
@@ -476,13 +477,13 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:8}}>{mob&&<button onClick={()=>setMobileFilters(!mobileFilters)} style={{background:t.primaryLight,border:"1px solid "+t.primary+"33",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:t.primary,fontWeight:700}}>☰</button>}<span style={{fontSize:mob?14:16,fontWeight:800,color:t.text}}>{cn?.i} {cn?.l}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
-            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v3.6</span>
+            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v3.7</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:t.textSec}}>{isDark?"☀":"🌙"}</button>
           </div>
         </div>
         {/* FILTER BAR */}
         {pg!=="inv"&&(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
+          {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={dbRange?.maxDate||defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
           {showShopFilter&&<Sel value={store} onChange={setStore} options={opts.stores} label={shopLabel} t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
