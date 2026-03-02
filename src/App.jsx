@@ -25,11 +25,11 @@ const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec
 const TIPS={sales:"Total revenue from all sales",units:"Total units sold",refunds:"Refunded orders",advCost:"Total ad spend (PPC)",shippingCost:"FBA shipping fees",refundCost:"Cost of processing refunds",amazonFees:"Referral + FBA fees",cogs:"Cost of Goods Sold",netProfit:"Revenue − All Costs",estPayout:"Estimated Amazon payout",realAcos:"Ad Spend / Sales × 100%",pctRefunds:"Refunds / Orders × 100%",margin:"Net Profit / Revenue × 100%",sessions:"Product page views",gp:"SUM(grossProfit) from seller_board_sales",cr:"Orders / Sessions × 100%",ctr:"Clicks / Impressions × 100%",sellThrough:"Units Sold / (Sold + Ending Inventory)",doh:"Current Stock / Avg Daily Sales"};
 
 /* ═══════════ BIDIRECTIONAL FILTER HOOK ═══════════ */
-function useBidirectionalFilters(store,seller,brand,asinF,masterList){
+function useBidirectionalFilters(store,seller,asinF,masterList){
   return useMemo(()=>{
-    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='brand'&&brand!=='All')d=d.filter(x=>x.b===brand);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
-    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),brands:[...new Set(ex('brand').map(x=>x.b))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
-  },[store,seller,brand,asinF,masterList]);
+    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
+    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
+  },[store,seller,asinF,masterList]);
 }
 
 /* ═══════════ RESPONSIVE HOOK ═══════════ */
@@ -50,6 +50,14 @@ function PeriodBtns({onSelect,active,t,refDate}){
 }
 function ClearBtn({onClick,t}){return<button onClick={onClick} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.red,fontSize:10,cursor:"pointer",fontWeight:600,background:"transparent",color:t.red,whiteSpace:"nowrap"}}>✕ Clear</button>}
 const Sel=({value,onChange,options,label,t,renderLabel})=><select value={value} onChange={e=>onChange(e.target.value)} style={{background:t.card,color:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:500,cursor:"pointer"}}><option value="All">{label}</option>{options.map(o=><option key={o} value={o}>{renderLabel?renderLabel(o):o}</option>)}</select>;
+function AsinSel({value,onChange,options,label,t}){
+  const[open,setOpen]=useState(false);const[q,setQ]=useState("");const ref=useRef(null);
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
+  const filtered=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
+  return<div ref={ref} style={{position:"relative",display:"inline-block"}}><button onClick={()=>{setOpen(!open);setQ("")}} style={{background:t.card,color:value==="All"?t.textMuted:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:value==="All"?500:700,cursor:"pointer",minWidth:100,textAlign:"left"}}>{value==="All"?label:value} ▾</button>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,boxShadow:"0 4px 16px "+t.shadow,minWidth:180,maxHeight:280,display:"flex",flexDirection:"column"}}><div style={{padding:4,borderBottom:"1px solid "+t.divider}}><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ASIN..." autoFocus style={{width:"100%",padding:"5px 8px",border:"1px solid "+t.inputBorder,borderRadius:5,fontSize:11,background:t.bg,color:t.text,outline:"none",boxSizing:"border-box"}}/></div><div style={{overflowY:"auto",flex:1}}><div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:value==="All"?700:400,color:value==="All"?t.primary:t.text,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>{filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:10,fontFamily:"monospace",cursor:"pointer",fontWeight:value===o?700:400,color:value===o?t.primary:t.text,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:10,color:t.textMuted}}>No results</div>}</div></div>}
+  </div>;
+}
 
 function KpiCard({title,value,change,icon,t,tip}){return<div style={{background:t.card,borderRadius:12,padding:"16px 18px",border:"1px solid "+t.cardBorder}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px "+t.shadow} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,textTransform:"uppercase",letterSpacing:.8,fontWeight:700,marginBottom:8}}>{title}{tip&&<Tip text={tip} t={t}/>}</div><div style={{fontSize:20,fontWeight:700,color:t.text,letterSpacing:-.3}}>{value}</div>{change!==undefined&&change!==null&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:6}}><span style={{fontSize:11,fontWeight:600,color:change>=0?t.green:t.red,background:change>=0?t.greenBg:t.redBg,padding:"2px 8px",borderRadius:10}}>{change>=0?"↑":"↓"} {Math.abs(change).toFixed(1)}%</span><span style={{fontSize:9,color:t.textMuted}}>vs prev</span></div>}</div><div style={{width:34,height:34,borderRadius:9,background:t.kpiIcon,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{icon}</div></div></div>}
 
@@ -145,8 +153,8 @@ function InvPage({t,mob,invData,invShop,invTrend}){
 }
 
 /* ═══════════ ASIN PLAN ═══════════ */
-function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
-  const isF=(seller&&seller!=="All")||(brand&&brand!=="All")||(asinF&&asinF!=="All");
+function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF}){
+  const isF=(seller&&seller!=="All")||(store&&store!=="All")||(asinF&&asinF!=="All");
   const[trendMetric,setTrendMetric]=useState("gp");
   const[kpiMonth,setKpiMonth]=useState("All");
   const[tblMonth,setTblMonth]=useState("All");
@@ -257,7 +265,7 @@ export default function App(){
   const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(defaultEnd);
   const[activePeriod,setActivePeriod]=useState(null);
   const[store,setStore]=useState("All");const[seller,setSeller]=useState("All");
-  const[brand,setBrand]=useState("All");const[asinF,setAsinF]=useState("All");
+  const[asinF,setAsinF]=useState("All");
   const[planYear,setPlanYear]=useState(String(new Date().getFullYear()));
   const planYearOpts=useMemo(()=>{const c=new Date().getFullYear();return[String(c-1),String(c),String(c+1)]},[]);
   const clearDates=()=>{setSd(defaultStart);setEd(defaultEnd);setActivePeriod(null)};
@@ -278,10 +286,9 @@ export default function App(){
   const[masterList,setMasterList]=useState([]);
   const[loading,setLoading]=useState(false);
 
-  const opts=useBidirectionalFilters(store,seller,brand,asinF,masterList);
+  const opts=useBidirectionalFilters(store,seller,asinF,masterList);
   useEffect(()=>{if(store!=="All"&&opts.stores.length&&!opts.stores.includes(store))setStore("All")},[opts.stores]);
   useEffect(()=>{if(seller!=="All"&&opts.sellers.length&&!opts.sellers.includes(seller))setSeller("All")},[opts.sellers]);
-  useEffect(()=>{if(brand!=="All"&&opts.brands.length&&!opts.brands.includes(brand))setBrand("All")},[opts.brands]);
   useEffect(()=>{if(asinF!=="All"&&opts.asins.length&&!opts.asins.includes(asinF))setAsinF("All")},[opts.asins]);
 
   // ═══════════ INIT: Connect to backend ═══════════
@@ -301,10 +308,10 @@ export default function App(){
               if(f.asins){
                 f.asins.forEach(a=>{
                   const shops=a.shops&&a.shops.length?a.shops:shopNames.length?[shopNames[0]]:["Unknown"];
-                  shops.forEach(sh=>ml.push({a:a.asin||"",b:a.brand||a.store||"",st:sh,sl:a.seller||""}));
+                  shops.forEach(sh=>ml.push({a:a.asin||"",st:sh,sl:a.seller||""}));
                 });
               }
-              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",b:"",st:sh,sl:""});});
+              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",st:sh,sl:""});});
               setMasterList(ml);
               console.log("masterList built:",ml.length,"entries. Sample:",ml.slice(0,3));
               if(ml.length===0)setFilterError("Filters API returned data but masterList is empty");
@@ -346,7 +353,7 @@ export default function App(){
   useEffect(()=>{
     if(!live||dbConnecting)return;
     let cancelled=false;
-    const p={start:sd,end:ed,store,seller,brand,asin:asinF};
+    const p={start:sd,end:ed,store,seller,asin:asinF};
     setLoading(true);setFilterError(null);
     (async()=>{
       try{
@@ -366,15 +373,15 @@ export default function App(){
         console.log("exec/daily:",Array.isArray(daily)?daily.length+" rows":"NOT ARRAY",JSON.stringify(daily).slice(0,200));
         if(!cancelled)setFDaily((daily||[]).map(r=>{const dt=new Date(r.date);return{date:r.date,label:MS[dt.getMonth()]+" "+dt.getDate(),revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
         // ASINs
-        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
+        const asins=await api("product/asins",{start:sd,end:ed,store,seller,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
         console.log("product/asins:",Array.isArray(asins)?asins.length+" rows":"NOT ARRAY");
         if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
         // Shops
-        const shops=await api("shops",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
+        const shops=await api("shops",{start:sd,end:ed,store,seller,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
         console.log("shops:",Array.isArray(shops)?shops.length+" rows":"NOT ARRAY");
         if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
         // Team
-        const team=await api("team",{start:sd,end:ed,seller,store,brand,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
+        const team=await api("team",{start:sd,end:ed,seller,store,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
         console.log("team:",Array.isArray(team)?team.length+" rows":"NOT ARRAY",JSON.stringify(team).slice(0,200));
         if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
         console.log("=== DATA FETCH DONE ===");
@@ -382,7 +389,7 @@ export default function App(){
       if(!cancelled)setLoading(false);
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,sd,ed,store,seller,brand,asinF]);
+  },[live,dbConnecting,sd,ed,store,seller,asinF]);
 
   // ═══════════ FETCH PLAN DATA ═══════════
   useEffect(()=>{
@@ -391,8 +398,8 @@ export default function App(){
     (async()=>{
       try{
         const[planRes,actualsRes]=await Promise.all([
-          api("plan/data",{year:planYear,brand,seller,asin:asinF}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
-          api("plan/actuals",{year:planYear,brand,seller,asin:asinF}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
+          api("plan/data",{year:planYear,store,seller,asin:asinF}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
+          api("plan/actuals",{year:planYear,store,seller,asin:asinF}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
         ]);
         console.log("plan/data:",JSON.stringify(planRes).slice(0,300));
         console.log("plan/actuals monthly:",actualsRes?.monthly?.length,"rows");
@@ -438,17 +445,19 @@ export default function App(){
       }catch(e){console.error("Plan fetch error:",e)}
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,planYear,brand,seller,asinF]);
+  },[live,dbConnecting,planYear,store,seller,asinF]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
   const pctChg=useCallback((cur,prev)=>{if(prev==null||prev===0)return undefined;return((cur-prev)/Math.abs(prev))*100},[]);
 
   // Filter visibility per page
-  const showStore=["exec","prod","shops","team","daily","inv"].includes(pg);
+  // Filter visibility: Exec=Brand+Seller, Plan=Brand+Seller+ASIN, Prod/Shop/Team/Daily=Store+Seller+ASIN, Inv=Store
+  // "Brand" = same as Store (account.shop), just different label
+  const showShopFilter=["exec","prod","shops","team","daily","inv","plan"].includes(pg);
+  const shopLabel=["exec","plan"].includes(pg)?"All Brands":"All Shops";
   const showSeller=["exec","prod","shops","team","plan","daily"].includes(pg);
-  const showBrand=["exec","plan","prod","shops","team","daily"].includes(pg);
-  const showAsin=["exec","plan","prod","shops","team","daily"].includes(pg);
+  const showAsin=["plan","prod","shops","team","daily"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting..."/></div>;
 
@@ -467,7 +476,7 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:8}}>{mob&&<button onClick={()=>setMobileFilters(!mobileFilters)} style={{background:t.primaryLight,border:"1px solid "+t.primary+"33",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:t.primary,fontWeight:700}}>☰</button>}<span style={{fontSize:mob?14:16,fontWeight:800,color:t.text}}>{cn?.i} {cn?.l}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
-            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v3.5</span>
+            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v3.6</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:t.textSec}}>{isDark?"☀":"🌙"}</button>
           </div>
         </div>
@@ -475,11 +484,9 @@ export default function App(){
         {pg!=="inv"&&(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
-          {["prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
-          {showStore&&<Sel value={store} onChange={setStore} options={opts.stores} label="All Shops" t={t}/>}
+          {showShopFilter&&<Sel value={store} onChange={setStore} options={opts.stores} label={shopLabel} t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
-          {showBrand&&<Sel value={brand} onChange={setBrand} options={opts.brands} label="All Brands" t={t}/>}
-          {showAsin&&<Sel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
+          {showAsin&&<AsinSel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
         </div>}
       </div>
 
@@ -488,7 +495,7 @@ export default function App(){
         {filterError&&<div style={{padding:"10px 16px",marginBottom:12,background:"#FEF3CD",border:"1px solid #F0D060",borderRadius:8,fontSize:11,color:"#856404"}}>⚠️ Filter issue: {filterError} — <a href={window.location.origin+"/api/debug/filters"} target="_blank" rel="noopener" style={{color:"#0066CC",textDecoration:"underline"}}>View debug info</a></div>}
         {pg==="exec"&&<ExecPage t={t} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={em} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob}/>}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend}/>}
-        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} brand={brand} asinF={asinF}/>}
+        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF}/>}
         {pg==="prod"&&<ProdPage t={t} fAsin={fAsin} fDaily={fDaily}/>}
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} fSeller={fSeller} fDaily={fDaily}/>}
