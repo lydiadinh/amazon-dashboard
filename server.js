@@ -504,7 +504,9 @@ app.get('/api/plan/actuals', async (req, res) => {
     }
 
     // ASIN breakdown from seller_board_product
-    const asinRows = await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
+    let asinRows = [];
+    try {
+      asinRows = await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
       SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp,
       SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
       FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin
