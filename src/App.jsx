@@ -25,11 +25,11 @@ const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec
 const TIPS={sales:"Total revenue from all sales",units:"Total units sold",refunds:"Refunded orders",advCost:"Total ad spend (PPC)",shippingCost:"FBA shipping fees",refundCost:"Cost of processing refunds",amazonFees:"Referral + FBA fees",cogs:"Cost of Goods Sold",netProfit:"Revenue − All Costs",estPayout:"Estimated Amazon payout",realAcos:"Ad Spend / Sales × 100%",pctRefunds:"Refunds / Orders × 100%",margin:"Net Profit / Revenue × 100%",sessions:"Product page views",gp:"SUM(grossProfit) from seller_board_sales",cr:"Orders / Sessions × 100%",ctr:"Clicks / Impressions × 100%",sellThrough:"Units Sold / (Sold + Ending Inventory)",doh:"Current Stock / Avg Daily Sales"};
 
 /* ═══════════ BIDIRECTIONAL FILTER HOOK ═══════════ */
-function useBidirectionalFilters(store,seller,brand,asinF,masterList){
+function useBidirectionalFilters(store,seller,asinF,masterList){
   return useMemo(()=>{
-    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='brand'&&brand!=='All')d=d.filter(x=>x.b===brand);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
-    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),brands:[...new Set(ex('brand').map(x=>x.b))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
-  },[store,seller,brand,asinF,masterList]);
+    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
+    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
+  },[store,seller,asinF,masterList]);
 }
 
 /* ═══════════ RESPONSIVE HOOK ═══════════ */
@@ -50,21 +50,12 @@ function PeriodBtns({onSelect,active,t,refDate}){
 }
 function ClearBtn({onClick,t}){return<button onClick={onClick} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.red,fontSize:10,cursor:"pointer",fontWeight:600,background:"transparent",color:t.red,whiteSpace:"nowrap"}}>✕ Clear</button>}
 const Sel=({value,onChange,options,label,t,renderLabel})=><select value={value} onChange={e=>onChange(e.target.value)} style={{background:t.card,color:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:500,cursor:"pointer"}}><option value="All">{label}</option>{options.map(o=><option key={o} value={o}>{renderLabel?renderLabel(o):o}</option>)}</select>;
-
-function SearchSel({value,onChange,options,label,t}){
+function AsinSel({value,onChange,options,label,t}){
   const[open,setOpen]=useState(false);const[q,setQ]=useState("");const ref=useRef(null);
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
   const filtered=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
-  return<div ref={ref} style={{position:"relative",display:"inline-block"}}>
-    <button onClick={()=>{setOpen(!open);setQ("")}} style={{background:t.card,color:value==="All"?t.textSec:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:500,cursor:"pointer",minWidth:100,textAlign:"left",display:"flex",alignItems:"center",gap:4}}><span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{value==="All"?label:value}</span><span style={{fontSize:8,color:t.textMuted}}>▼</span></button>
-    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,marginTop:2,minWidth:200,maxHeight:300,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px "+t.shadow}}>
-      <div style={{padding:6,borderBottom:"1px solid "+t.divider}}><input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..." style={{width:"100%",background:t.card,color:t.text,border:"1px solid "+t.inputBorder,borderRadius:6,padding:"5px 8px",fontSize:11,boxSizing:"border-box",outline:"none"}}/></div>
-      <div style={{flex:1,overflowY:"auto"}}>
-        <div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",color:value==="All"?t.primary:t.text,fontWeight:value==="All"?700:400,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>
-        {filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontFamily:"monospace",color:value===o?t.primary:t.text,fontWeight:value===o?700:400,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}
-        {filtered.length===0&&<div style={{padding:"10px",fontSize:10,color:t.textMuted,textAlign:"center"}}>No results</div>}
-      </div>
-    </div>}
+  return<div ref={ref} style={{position:"relative",display:"inline-block"}}><button onClick={()=>{setOpen(!open);setQ("")}} style={{background:t.card,color:value==="All"?t.textMuted:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:value==="All"?500:700,cursor:"pointer",minWidth:100,textAlign:"left"}}>{value==="All"?label:value} ▾</button>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,boxShadow:"0 4px 16px "+t.shadow,minWidth:180,maxHeight:280,display:"flex",flexDirection:"column"}}><div style={{padding:4,borderBottom:"1px solid "+t.divider}}><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ASIN..." autoFocus style={{width:"100%",padding:"5px 8px",border:"1px solid "+t.inputBorder,borderRadius:5,fontSize:11,background:t.card,color:t.text,outline:"none",boxSizing:"border-box"}}/></div><div style={{overflowY:"auto",flex:1}}><div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:value==="All"?700:400,color:value==="All"?t.primary:t.text,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>{filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:10,fontFamily:"monospace",cursor:"pointer",fontWeight:value===o?700:400,color:value===o?t.primary:t.text,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:10,color:t.textMuted}}>No results</div>}</div></div>}
   </div>;
 }
 
@@ -162,23 +153,23 @@ function InvPage({t,mob,invData,invShop,invTrend}){
 }
 
 /* ═══════════ ASIN PLAN ═══════════ */
-function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
-  const isF=(seller&&seller!=="All")||(brand&&brand!=="All")||(asinF&&asinF!=="All");
+function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF}){
+  const isF=(seller&&seller!=="All")||(store&&store!=="All")||(asinF&&asinF!=="All");
   const[trendMetric,setTrendMetric]=useState("gp");
   const[kpiMonth,setKpiMonth]=useState("All");
   const[tblMonth,setTblMonth]=useState("All");
-  const metrics=[{k:"gp",l:"Gross Profit"},{k:"np",l:"Net Profit"},{k:"rv",l:"Revenue"},{k:"ad",l:"Ads Spend"},{k:"un",l:"Units"},{k:"se",l:"Sessions"},{k:"im",l:"Impressions"},{k:"cr",l:"Conv. Rate"},{k:"ct",l:"Click-Through Rate"}];
-  const mK={gp:{a:"gpa",p:"gpp"},np:{a:"npa",p:"npp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"},se:{a:"sa",p:"sp"},im:{a:"ia",p:"ip"},cr:{a:"cra",p:"crp"},ct:{a:"cta",p:"ctp"}};
+  const metrics=[{k:"gp",l:"Gross Profit"},{k:"rv",l:"Revenue"},{k:"ad",l:"Ads Spend"},{k:"un",l:"Units"},{k:"se",l:"Sessions"},{k:"im",l:"Impressions"},{k:"cr",l:"Conv. Rate"},{k:"ct",l:"Click-Through Rate"}];
+  const mK={gp:{a:"gpa",p:"gpp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"},se:{a:"sa",p:"sp"},im:{a:"ia",p:"ip"},cr:{a:"cra",p:"crp"},ct:{a:"cta",p:"ctp"}};
   
   const mpd=monthPlanData||[];
   const hasData=mpd.some(m=>(m.gpa||0)+(m.gpp||0)+(m.ra||0)+(m.rp||0)>0)||(asinPlanBkData||[]).length>0;
   const trendData=mpd.map(m=>{const ak=mK[trendMetric].a,pk2=mK[trendMetric].p;return{m:m.m,Actual:m[ak],Plan:m[pk2]}});
   const isCur=["gp","rv","ad"].includes(trendMetric);const isPct=["cr","ct"].includes(trendMetric);
   const kpiData=useMemo(()=>{
-    const pk=planKpi||{gp:{a:0,p:0},np:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
+    const pk=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
     if(kpiMonth==="All")return pk;
     const mi=MS.indexOf(kpiMonth);const m=mpd[mi];if(!m)return pk;
-    return{gp:{a:m.gpa,p:m.gpp},np:{a:m.npa,p:m.npp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:m.cra,p:m.crp},ct:{a:m.cta,p:m.ctp}};
+    return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:m.cra,p:m.crp},ct:{a:m.cta,p:m.ctp}};
   },[kpiMonth,planKpi,mpd]);
   // Filter ASIN Breakdown by selected month
   const fPlanBk=useMemo(()=>{
@@ -187,19 +178,19 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
     const mi=MS.indexOf(tblMonth)+1;
     return raw.map(r=>{
       const md=r.mData?.[mi]||r.mData?.[String(mi)]||{};
-      return{...r,ga:md.ga||0,gp:md.gp||0,npa:md.npa||0,npp:md.npp||0,ra:md.ra||0,rp:md.rp||0,aa:md.aa||0,ap:md.ap||0,ua:md.ua||0,up:md.up||0,sa:md.sa||0,sp:md.sp||0,ia:md.ia||0,ip:md.ip||0,cra:md.cra||0,crp:md.crp||0,cta:md.cta||0,ctp:md.ctp||0};
+      return{...r,ga:md.ga||0,gp:md.gp||0,ra:md.ra||0,rp:md.rp||0,aa:md.aa||0,ap:md.ap||0,ua:md.ua||0,up:md.up||0,sa:md.sa||0,sp:md.sp||0,ia:md.ia||0,ip:md.ip||0,cra:md.cra||0,crp:md.crp||0,cta:md.cta||0,ctp:md.ctp||0};
     }).filter(r=>(r.ga||0)+(r.gp||0)+(r.ra||0)+(r.rp||0)+(r.ua||0)+(r.up||0)>0);
   },[tblMonth,asinPlanBkData]);
-  const THD=["Month","⭐ GP","NP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
-  const AHDL=["ASIN","Brand","⭐ GP","NP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
+  const THD=["Month","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
+  const AHDL=["ASIN","Brand","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
   return<div>
     {!hasData&&<div style={{padding:24,textAlign:"center",color:t.textMuted,fontSize:13,background:t.card,borderRadius:12,border:"1px solid "+t.cardBorder,marginBottom:16}}>📋 No plan data found for this year/filter combination. Try selecting a different year or adjusting filters.</div>}
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:11,color:t.textMuted,fontWeight:600}}>KPI Month:</span><Sel value={kpiMonth} onChange={setKpiMonth} options={MS} label="All Months" t={t}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Net Profit" actual={kpiData.np.a} plan={kpiData.np.p} t={t} tip={TIPS.netProfit}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?kpiData.cr.a+"%":null} plan={kpiData.cr.p+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?kpiData.ct.a+"%":null} plan={kpiData.ct.p+"%"} t={t}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?(Math.round(kpiData.cr.a*100)/100)+"%":null} plan={(Math.round(kpiData.cr.p*100)/100)+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?(Math.round(kpiData.ct.a*100)/100)+"%":null} plan={(Math.round(kpiData.ct.p*100)/100)+"%"} t={t}/></div>
     <Sec title="Trend — Actual vs Plan" icon="📊" t={t} action={<select value={trendMetric} onChange={e=>setTrendMetric(e.target.value)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:t.primary,cursor:"pointer"}}>{metrics.map(m=><option key={m.k} value={m.k}>{m.l}</option>)}</select>}><Cd t={t}><ResponsiveContainer width="100%" height={260}><ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="m" tick={{fill:t.textSec,fontSize:10}}/><YAxis tick={{fill:t.textMuted,fontSize:10}} tickFormatter={v=>isCur?$s(v):isPct?v+"%":N(v)}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Actual" fill={t.primary} radius={[4,4,0,0]}/><Line type="monotone" dataKey="Plan" stroke={t.orange} strokeWidth={2} strokeDasharray="5 3" dot={{r:3,fill:t.orange}}/></ComposedChart></ResponsiveContainer></Cd></Sec>
-    <Sec title="Monthly Breakdown — All Metrics (A / P / Gap)" icon="📋" t={t} action={isF&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⚠️ Filtered by entity</span>}><div style={{overflowX:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr>{THD.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i===0?60:100}}>{h}</th>)}</tr></thead><tbody>{mpd.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.m}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.npa} plan={r.npp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider}}>Each cell: <strong style={{color:t.text}}>Actual</strong> / <span>Plan</span> / <span style={{color:t.green}}>Gap</span></div></div></Sec>
-    <Sec title="⭐ ASIN Breakdown" icon="📋" t={t} action={<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:t.textMuted}}>Month:</span><Sel value={tblMonth} onChange={setTblMonth} options={MS} label="All Months" t={t}/></div>}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{AHDL.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<=1?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i<=1?70:100}}>{h}</th>)}</tr></thead><tbody>{fPlanBk.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:10,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.br}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r.gp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.npa||0} plan={r.npp||0} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fPlanBk.length} ASINs · Ads: lower = better (reversed color)</div></div></Sec>
+    <Sec title="Monthly Breakdown — All Metrics (A / P / Gap)" icon="📋" t={t} action={isF&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⚠️ Filtered by entity</span>}><div style={{overflowX:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr>{THD.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i===0?60:100}}>{h}</th>)}</tr></thead><tbody>{mpd.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.m}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider}}>Each cell: <strong style={{color:t.text}}>Actual</strong> / <span>Plan</span> / <span style={{color:t.green}}>Gap</span></div></div></Sec>
+    <Sec title="⭐ ASIN Breakdown" icon="📋" t={t} action={<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:t.textMuted}}>Month:</span><Sel value={tblMonth} onChange={setTblMonth} options={MS} label="All Months" t={t}/></div>}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{AHDL.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<=1?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i<=1?70:100}}>{h}</th>)}</tr></thead><tbody>{fPlanBk.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:10,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.br}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r.gp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fPlanBk.length} ASINs · Ads: lower = better (reversed color)</div></div></Sec>
   </div>;
 }
 
@@ -274,17 +265,10 @@ export default function App(){
   const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(defaultEnd);
   const[activePeriod,setActivePeriod]=useState(null);
   const[store,setStore]=useState("All");const[seller,setSeller]=useState("All");
-  const[brand,setBrand]=useState("All");const[asinF,setAsinF]=useState("All");
+  const[asinF,setAsinF]=useState("All");
   const[planYear,setPlanYear]=useState(String(new Date().getFullYear()));
   const planYearOpts=useMemo(()=>{const c=new Date().getFullYear();return[String(c-1),String(c),String(c+1)]},[]);
-  const clearDates=()=>{
-    if(dbRange?.defaultStart && dbRange?.defaultEnd){
-      setSd(dbRange.defaultStart);setEd(dbRange.defaultEnd);
-    } else {
-      setSd(defaultStart);setEd(defaultEnd);
-    }
-    setActivePeriod(null);
-  };
+  const clearDates=()=>{if(dbRange?.defaultStart)setSd(dbRange.defaultStart);else setSd(defaultStart);if(dbRange?.defaultEnd)setEd(dbRange.defaultEnd);else setEd(defaultEnd);setActivePeriod(null)};
 
   // ═══════════ LIVE DATA STATE ═══════════
   const[em,setEm]=useState(EMPTY_EM);
@@ -296,16 +280,15 @@ export default function App(){
   const[invData,setInvData]=useState({});
   const[invShop,setInvShop]=useState([]);
   const[invTrend,setInvTrend]=useState([]);
-  const[planKpiState,setPlanKpiState]=useState({gp:{a:0,p:0},np:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}});
+  const[planKpiState,setPlanKpiState]=useState({gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}});
   const[monthPlanState,setMonthPlanState]=useState([]);
   const[asinPlanBkState,setAsinPlanBkState]=useState([]);
   const[masterList,setMasterList]=useState([]);
   const[loading,setLoading]=useState(false);
 
-  const opts=useBidirectionalFilters(store,seller,brand,asinF,masterList);
+  const opts=useBidirectionalFilters(store,seller,asinF,masterList);
   useEffect(()=>{if(store!=="All"&&opts.stores.length&&!opts.stores.includes(store))setStore("All")},[opts.stores]);
   useEffect(()=>{if(seller!=="All"&&opts.sellers.length&&!opts.sellers.includes(seller))setSeller("All")},[opts.sellers]);
-  useEffect(()=>{if(brand!=="All"&&opts.brands.length&&!opts.brands.includes(brand))setBrand("All")},[opts.brands]);
   useEffect(()=>{if(asinF!=="All"&&opts.asins.length&&!opts.asins.includes(asinF))setAsinF("All")},[opts.asins]);
 
   // ═══════════ INIT: Connect to backend ═══════════
@@ -325,10 +308,10 @@ export default function App(){
               if(f.asins){
                 f.asins.forEach(a=>{
                   const shops=a.shops&&a.shops.length?a.shops:shopNames.length?[shopNames[0]]:["Unknown"];
-                  shops.forEach(sh=>ml.push({a:a.asin||"",b:a.brand||a.store||"",st:sh,sl:a.seller||""}));
+                  shops.forEach(sh=>ml.push({a:a.asin||"",st:sh,sl:a.seller||""}));
                 });
               }
-              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",b:"",st:sh,sl:""});});
+              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",st:sh,sl:""});});
               setMasterList(ml);
               console.log("masterList built:",ml.length,"entries. Sample:",ml.slice(0,3));
               if(ml.length===0)setFilterError("Filters API returned data but masterList is empty");
@@ -342,11 +325,19 @@ export default function App(){
           const dr=await api("date-range").catch(()=>null);
           if(dr){
             setDbRange(dr);
-            // Use server-provided defaults (last 30d of actual data range)
+            // Use DB-based defaults for date range (server returns defaultEnd = dbMaxDate)
             if(dr.defaultStart && dr.defaultEnd){
-              console.log("Using DB date range:",dr.defaultStart,"to",dr.defaultEnd);
+              console.log("Setting dates from DB range: start=",dr.defaultStart,"end=",dr.defaultEnd,"(DB min:",dr.minDate,"max:",dr.maxDate,")");
               setSd(dr.defaultStart);
               setEd(dr.defaultEnd);
+            } else if(dr.maxDate){
+              // Fallback: use maxDate as end, 30 days before as start
+              const dbMax=new Date(dr.maxDate+"T00:00:00");
+              const adjStart=new Date(dbMax); adjStart.setDate(adjStart.getDate()-29);
+              const s=adjStart.toISOString().slice(0,10);
+              console.log("Fallback dates: start=",s,"end=",dr.maxDate);
+              setSd(s < (dr.minDate||s) ? dr.minDate : s);
+              setEd(dr.maxDate);
             }
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
@@ -362,13 +353,13 @@ export default function App(){
   useEffect(()=>{
     if(!live||dbConnecting)return;
     let cancelled=false;
-    const p={start:sd,end:ed,store,seller,brand,asin:asinF};
+    const p={start:sd,end:ed,store,seller,asin:asinF};
     setLoading(true);setFilterError(null);
     (async()=>{
       try{
         console.log("=== DATA FETCH START ===");
         console.log("Params:",JSON.stringify(p));
-        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);return EMPTY_EM;});
+        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Exec: '+e.message);return EMPTY_EM;});
         console.log("exec/summary:",typeof summary,summary?.sales!==undefined?"sales="+summary.sales:"NO SALES FIELD",JSON.stringify(summary).slice(0,300));
         if(!cancelled)setEm(summary);
         // Previous period
@@ -382,15 +373,15 @@ export default function App(){
         console.log("exec/daily:",Array.isArray(daily)?daily.length+" rows":"NOT ARRAY",JSON.stringify(daily).slice(0,200));
         if(!cancelled)setFDaily((daily||[]).map(r=>{const dt=new Date(r.date);return{date:r.date,label:MS[dt.getMonth()]+" "+dt.getDate(),revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
         // ASINs
-        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
+        const asins=await api("product/asins",{start:sd,end:ed,store,seller,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
         console.log("product/asins:",Array.isArray(asins)?asins.length+" rows":"NOT ARRAY");
         if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
         // Shops
-        const shops=await api("shops",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
+        const shops=await api("shops",{start:sd,end:ed,store,seller,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
         console.log("shops:",Array.isArray(shops)?shops.length+" rows":"NOT ARRAY");
         if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
         // Team
-        const team=await api("team",{start:sd,end:ed,seller,store,brand,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
+        const team=await api("team",{start:sd,end:ed,seller,store,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
         console.log("team:",Array.isArray(team)?team.length+" rows":"NOT ARRAY",JSON.stringify(team).slice(0,200));
         if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
         console.log("=== DATA FETCH DONE ===");
@@ -398,7 +389,7 @@ export default function App(){
       if(!cancelled)setLoading(false);
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,sd,ed,store,seller,brand,asinF]);
+  },[live,dbConnecting,sd,ed,store,seller,asinF]);
 
   // ═══════════ FETCH PLAN DATA ═══════════
   useEffect(()=>{
@@ -407,8 +398,8 @@ export default function App(){
     (async()=>{
       try{
         const[planRes,actualsRes]=await Promise.all([
-          api("plan/data",{year:planYear,brand,seller,asin:asinF}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
-          api("plan/actuals",{year:planYear,brand,seller,asin:asinF}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
+          api("plan/data",{year:planYear,store,seller,asin:asinF}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
+          api("plan/actuals",{year:planYear,store,seller,asin:asinF}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
         ]);
         console.log("plan/data:",JSON.stringify(planRes).slice(0,300));
         console.log("plan/actuals monthly:",actualsRes?.monthly?.length,"rows");
@@ -418,18 +409,19 @@ export default function App(){
         const monthlyActuals=actuals.monthly||[];const asinBk=actuals.asinBreakdown||[];
 
         // Build planKpi: merge plan totals with actual totals
-        const pk=plan.kpi||{gp:{a:0,p:0},np:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
+        const pk=plan.kpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
         // Fill actuals into kpi
-        const aT={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-        monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.np+=m.npa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;if(m.cra)aT.cr.push(m.cra);});
-        pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.np.a=aT.np;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;
+        const aT={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
+        monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;aT.im+=m.ia||0;if(m.cra)aT.cr.push(m.cra);if(m.cta)aT.ct.push(m.cta);});
+        pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;pk.im.a=aT.im;
         pk.cr.a=aT.cr.length?aT.cr.reduce((s,v)=>s+v,0)/aT.cr.length:0;
+        pk.ct.a=aT.ct.length?aT.ct.reduce((s,v)=>s+v,0)/aT.ct.length:0;
         setPlanKpiState(pk);
 
         // Build monthPlanData: merge plan + actuals per month
         const mpd=MS.map((mName,i)=>{
           const mn=i+1;const pp=monthlyPlan[mn]||{};const aa=monthlyActuals.find(m=>m.mn===mn)||{};
-          return{m:mName,gpa:aa.gpa||0,gpp:pp.gp||0,npa:aa.npa||0,npp:pp.np||0,ra:aa.ra||0,rp:pp.rv||0,aa:aa.aa||0,ap:pp.ad||0,ua:aa.ua||0,up:pp.un||0,sa:aa.sa||0,sp:pp.se||0,ia:aa.ia||0,ip:pp.im||0,cra:aa.cra||0,crp:pp.cr||0,cta:aa.cta||0,ctp:pp.ct||0};
+          return{m:mName,gpa:aa.gpa||0,gpp:pp.gp||0,ra:aa.ra||0,rp:pp.rv||0,aa:aa.aa||0,ap:pp.ad||0,ua:aa.ua||0,up:pp.un||0,sa:aa.sa||0,sp:pp.se||0,ia:aa.ia||0,ip:pp.im||0,cra:aa.cra||0,crp:pp.cr||0,cta:aa.cta||0,ctp:pp.ct||0};
         });
         setMonthPlanState(mpd);
 
@@ -438,33 +430,35 @@ export default function App(){
         const abk=[...allAsins].map(asin=>{
           const pd=asinPlan[asin]||{brand:"",months:{}};const ad=asinBk.find(a=>a.a===asin)||{};
           // Sum plan across months
-          let pTot={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-          Object.values(pd.months||{}).forEach(m=>{pTot.rv+=m.rv||0;pTot.gp+=m.gp||0;pTot.np+=m.np||0;pTot.ad+=m.ad||0;pTot.un+=m.un||0;pTot.se+=m.se||0;if(m.cr)pTot.cr.push(m.cr);});
+          let pTot={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
+          Object.values(pd.months||{}).forEach(m=>{pTot.rv+=m.rv||0;pTot.gp+=m.gp||0;pTot.ad+=m.ad||0;pTot.un+=m.un||0;pTot.se+=m.se||0;if(m.cr)pTot.cr.push(m.cr);});
           const crP=pTot.cr.length?pTot.cr.reduce((s,v)=>s+v,0)/pTot.cr.length:0;
           // Build per-month merged data
           const allMonths=new Set([...Object.keys(pd.months||{}),...Object.keys(ad.months||{})]);
           const mData={};
           allMonths.forEach(mn=>{
             const pm=pd.months?.[mn]||{};const am=ad.months?.[mn]||{};
-            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,npa:am.np||0,npp:pm.np||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:0,ctp:0};
+            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:am.im||0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:am.ct||0,ctp:pm.ct||0};
           });
-          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,npa:ad.npa||0,npp:pTot.np,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0,mData};
+          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0,mData};
         }).sort((a,b)=>(b.ga||0)-(a.ga||0));
         setAsinPlanBkState(abk);
       }catch(e){console.error("Plan fetch error:",e)}
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,planYear,brand,seller,asinF]);
+  },[live,dbConnecting,planYear,store,seller,asinF]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
   const pctChg=useCallback((cur,prev)=>{if(prev==null||prev===0)return undefined;return((cur-prev)/Math.abs(prev))*100},[]);
 
   // Filter visibility per page
-  const showStore=["exec","prod","shops","team","daily","inv"].includes(pg);
+  // Filter visibility: Exec=Brand+Seller, Plan=Brand+Seller+ASIN, Prod/Shop/Team/Daily=Store+Seller+ASIN, Inv=Store
+  // "Brand" = same as Store (account.shop), just different label
+  const showShopFilter=["exec","prod","shops","team","daily","inv","plan"].includes(pg);
+  const shopLabel=["exec","plan"].includes(pg)?"All Brands":"All Shops";
   const showSeller=["exec","prod","shops","team","plan","daily"].includes(pg);
-  const showBrand=["exec","plan","prod","shops","team","daily"].includes(pg);
-  const showAsin=["exec","plan","prod","shops","team","daily"].includes(pg);
+  const showAsin=["plan","prod","shops","team","daily"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting..."/></div>;
 
@@ -491,10 +485,9 @@ export default function App(){
         {pg!=="inv"&&(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={dbRange?.maxDate||defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
-          {showStore&&<Sel value={store} onChange={setStore} options={opts.stores} label="All Shops" t={t}/>}
+          {showShopFilter&&<Sel value={store} onChange={setStore} options={opts.stores} label={shopLabel} t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
-          {showBrand&&<Sel value={brand} onChange={setBrand} options={opts.brands} label="All Brands" t={t}/>}
-          {showAsin&&<SearchSel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
+          {showAsin&&<AsinSel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
         </div>}
       </div>
 
@@ -503,7 +496,7 @@ export default function App(){
         {filterError&&<div style={{padding:"10px 16px",marginBottom:12,background:"#FEF3CD",border:"1px solid #F0D060",borderRadius:8,fontSize:11,color:"#856404"}}>⚠️ Filter issue: {filterError} — <a href={window.location.origin+"/api/debug/filters"} target="_blank" rel="noopener" style={{color:"#0066CC",textDecoration:"underline"}}>View debug info</a></div>}
         {pg==="exec"&&<ExecPage t={t} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={em} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob}/>}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend}/>}
-        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} brand={brand} asinF={asinF}/>}
+        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF}/>}
         {pg==="prod"&&<ProdPage t={t} fAsin={fAsin} fDaily={fDaily}/>}
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} fSeller={fSeller} fDaily={fDaily}/>}
