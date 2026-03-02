@@ -262,30 +262,23 @@ app.get('/api/team', async (req, res) => {
     const { start, end, store, seller, asin: af } = req.query;
     const { s, e } = defDates(start, end);
     const accId = await storeToAccId(store);
-    const sellerMap = {};
-    (await q("SELECT asin, COALESCE(NULLIF(seller,''), 'Unassigned') as seller FROM asin")).forEach(r=>{sellerMap[r.asin]=r.seller;});
-    let w = 'WHERE date BETWEEN ? AND ?'; const params = [s, e];
-    if (af && af !== 'All') { w += ' AND asin = ?'; params.push(af); }
-    if (accId) { w += ' AND accountId = ?'; params.push(accId); }
-    const rows = await q(`SELECT asin,
-      SUM(COALESCE(salesOrganic,0)+COALESCE(salesPPC,0)) as revenue,
-      SUM(COALESCE(netProfit,0)) as netProfit,
-      SUM(COALESCE(unitsOrganic,0)+COALESCE(unitsPPC,0)) as units
-      FROM seller_board_product ${w} GROUP BY asin`, params, 45000);
-    const agg = {};
-    rows.forEach(r => {
-      const sl = sellerMap[r.asin] || 'Unassigned';
-      if (seller && seller !== 'All' && sl !== seller) return;
-      if (!agg[sl]) agg[sl] = { revenue: 0, netProfit: 0, units: 0, asins: new Set() };
-      agg[sl].revenue += parseFloat(r.revenue)||0;
-      agg[sl].netProfit += parseFloat(r.netProfit)||0;
-      agg[sl].units += parseInt(r.units)||0;
-      agg[sl].asins.add(r.asin);
-    });
-    res.json(Object.entries(agg).map(([sl,d])=>({
-      seller: sl, revenue: d.revenue, netProfit: d.netProfit, units: d.units,
-      margin: d.revenue>0?(d.netProfit/d.revenue*100):0, asinCount: d.asins.size,
-    })).sort((a,b)=>b.revenue-a.revenue).slice(0,100));
+    let w = 'WHERE p.date BETWEEN ? AND ?'; const params = [s, e];
+    if (af && af !== 'All') { w += ' AND p.asin = ?'; params.push(af); }
+    if (accId) { w += ' AND p.accountId = ?'; params.push(accId); }
+    if (seller && seller !== 'All') { w += " AND COALESCE(NULLIF(a.seller,''),'Unassigned') = ?"; params.push(seller); }
+    const rows = await q(`SELECT COALESCE(NULLIF(a.seller,''),'Unassigned') as seller,
+      SUM(COALESCE(p.salesOrganic,0)+COALESCE(p.salesPPC,0)) as revenue,
+      SUM(COALESCE(p.netProfit,0)) as netProfit,
+      SUM(COALESCE(p.unitsOrganic,0)+COALESCE(p.unitsPPC,0)) as units,
+      COUNT(DISTINCT p.asin) as asinCount
+      FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin
+      ${w} GROUP BY COALESCE(NULLIF(a.seller,''),'Unassigned')
+      ORDER BY revenue DESC LIMIT 100`, params, 60000);
+    res.json(rows.map(r => {
+      const rev=parseFloat(r.revenue)||0, np=parseFloat(r.netProfit)||0;
+      return { seller: r.seller, revenue: rev, netProfit: np, units: parseInt(r.units)||0,
+        margin: rev>0?(np/rev*100):0, asinCount: parseInt(r.asinCount)||0 };
+    }));
   } catch (e) { console.error('TEAM:', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -345,6 +338,26 @@ app.get('/api/inventory/by-shop', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ═══════════ PLAN DEBUG ═══════════ */
+app.get('/api/debug/plan', async (req, res) => {
+  const yr = req.query.year || new Date().getFullYear();
+  const R = { year: yr, steps: {} };
+  try {
+    R.steps.cols = (await q('SHOW COLUMNS FROM asin_plan')).map(c=>c.Field);
+    R.steps.hasYear = R.steps.cols.includes('year');
+    R.steps.sampleRows = await q('SELECT * FROM asin_plan LIMIT 3');
+    R.steps.yearValues = await q('SELECT DISTINCT `year` FROM asin_plan LIMIT 10').catch(()=>'no year col');
+    R.steps.totalRows = (await q('SELECT COUNT(*) as cnt FROM asin_plan'))[0]?.cnt;
+    // Test sales query
+    try { const sr = await q(`SELECT COUNT(*) as cnt FROM seller_board_sales WHERE date BETWEEN '${yr}-01-01' AND '${yr}-12-31'`); R.steps.salesRows = sr[0]?.cnt; } catch(e) { R.steps.salesRows = e.message; }
+    // Test product query
+    try { const pr = await q(`SELECT COUNT(*) as cnt FROM seller_board_product WHERE date BETWEEN '${yr}-01-01' AND '${yr}-12-31'`); R.steps.productRows = pr[0]?.cnt; } catch(e) { R.steps.productRows = e.message; }
+    // Test analytics query
+    try { const ar = await q(`SELECT COUNT(*) as cnt FROM analytics_search_catalog_performance WHERE YEAR(startDate) = ?`, [yr]); R.steps.analyticsRows = ar[0]?.cnt; } catch(e) { R.steps.analyticsRows = e.message; }
+  } catch(e) { R.error = e.message; }
+  res.json(R);
+});
+
 /* ═══════════ ASIN PLAN ═══════════ */
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const METRICS_MAP={'Rev':'rv','Unit':'un','Ads':'ad','GP':'gp','NP':'gp','Session':'se','Impression':'im','CR':'cr','CTR':'ct','Price':'pr','CPM':'cpm','CPC':'cpc','Cogs':'cg','AMZ fee':'af','Gross Profit':'gp','rev':'rv','unit':'un','ads':'ad','gp':'gp','np':'gp','session':'se','impression':'im','cr':'cr','ctr':'ct','price':'pr','cpm':'cpm','cpc':'cpc','cogs':'cg','amz fee':'af','gross profit':'gp','revenue':'rv','Revenue':'rv','units':'un','Units':'un','grossProfit':'gp','adSpend':'ad','Ad Spend':'ad','sessions':'se','Sessions':'se','impressions':'im','Impressions':'im'};
@@ -381,13 +394,22 @@ app.get('/api/plan/data', async (req, res) => {
     let params = hasYear ? [yr] : [];
     if (month && month !== 'All') { const mn=parseInt(month); if(mn>=1&&mn<=12){where+=' AND ap.month_num = ?';params.push(mn);} }
     if (store && store !== 'All') {
-      const accId = await storeToAccId(store);
-      if (accId) { where+=' AND (ap.brand_name = ? OR ap.asin IN (SELECT DISTINCT asin FROM seller_board_product WHERE accountId = ?))'; params.push(store, accId); }
-      else { where+=' AND ap.brand_name = ?'; params.push(store); }
+      const accId2 = await storeToAccId(store);
+      if (accId2) {
+        // Pre-fetch ASINs for this store (faster than subquery)
+        const storeAsins = (await q('SELECT DISTINCT asin FROM seller_board_product WHERE accountId = ? AND date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY) LIMIT 2000', [accId2], 15000).catch(()=>[])).map(r=>r.asin);
+        if (storeAsins.length) {
+          const placeholders = storeAsins.map(()=>'?').join(',');
+          where += ` AND (ap.brand_name = ? OR ap.asin IN (${placeholders}))`;
+          params.push(store, ...storeAsins);
+        } else {
+          where += ' AND ap.brand_name = ?'; params.push(store);
+        }
+      } else { where += ' AND ap.brand_name = ?'; params.push(store); }
     }
     if (af && af !== 'All') { where+=' AND ap.asin = ?'; params.push(af); }
     if (seller && seller !== 'All') { where+=' AND a.seller = ?'; params.push(seller); }
-    const rows = await q(`SELECT ap.asin, ap.brand_name, ap.month_num, ap.metrics, CAST(ap.value AS DECIMAL(20,4)) as value
+    const rows = await q(`SELECT ap.asin, ap.brand_name, ap.month_num, ap.metrics, COALESCE(CAST(ap.value AS DECIMAL(20,4)),0) as value
       FROM asin_plan ap LEFT JOIN asin a ON ap.asin=a.asin ${where} ORDER BY ap.month_num`, params, 45000);
 
     const monthlyPlan={}, asinPlan={};
@@ -429,7 +451,7 @@ app.get('/api/plan/data', async (req, res) => {
     }
 
     res.json({kpi,monthlyPlan,asinPlan});
-  } catch (e) { console.error('plan/data:', e.message); res.status(500).json({error:e.message}); }
+  } catch (e) { console.error('plan/data ERROR:', e.message, e.stack?.split('\n')[1]); res.status(500).json({error:'Plan data: '+e.message}); }
 });
 
 app.get('/api/plan/actuals', async (req, res) => {
@@ -438,17 +460,23 @@ app.get('/api/plan/actuals', async (req, res) => {
     const yr = year || new Date().getFullYear();
     const accId = await storeToAccId(store);
 
-    // Source 1: Revenue, GP, Units, Sessions from combined sales
-    const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
-    const salesRows = await q(`SELECT MONTH(sc.date) as mn,
-      SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp,
-      SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions
-      FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
+    // Source 1: Revenue, GP, Units, Sessions from seller_board_sales
+    let salesRows = [];
+    try {
+      const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
+      salesRows = await q(`SELECT MONTH(sc.date) as mn,
+        SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp,
+        SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions
+        FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
+    } catch(e1) { console.warn('plan/actuals sales query failed:', e1.message); }
 
     // Source 2: Ads from seller_board_product
+    let adsRows = [];
     const pF = pWhere(`${yr}-01-01`,`${yr}-12-31`,accId,seller,af);
-    const adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
-      FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
+    try {
+      adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
+    } catch(e2) { console.warn('plan/actuals ads query failed:', e2.message); }
 
     // Source 3: Impressions + Clicks from analytics_search_catalog_performance
     let impRows = [];
@@ -482,6 +510,7 @@ app.get('/api/plan/actuals', async (req, res) => {
       FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin
       LEFT JOIN (SELECT DISTINCT asin, brand_name FROM asin_plan) ap2 ON p.asin=ap2.asin
       ${pF.w} GROUP BY p.asin, ap2.brand_name, a.seller, MONTH(p.date) ORDER BY gp DESC`, pF.p, 45000);
+    } catch(e3) { console.warn('plan/actuals asin query failed:', e3.message); }
 
     const asinData={};
     asinRows.forEach(r=>{
