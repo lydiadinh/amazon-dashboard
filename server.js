@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
-const VER = 'v3.7-2026-03-02';
+const VER = 'v3.8-2026-03-02';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -36,6 +36,12 @@ async function q(sql, params = [], timeoutMs = 30000) {
   return Promise.race([pool.execute(sql, params).then(([rows]) => rows), timeout]);
 }
 
+/* ═══════════ COMBINED SALES TABLE ═══════════
+   PBI does: seller_board_sales APPEND seller_board_sales_old then remove duplicates
+   In SQL: all from seller_board_sales + rows from seller_board_sales_old before sales min date */
+const SALES_COMBINED = `(SELECT * FROM seller_board_sales UNION ALL SELECT * FROM seller_board_sales_old WHERE date < (SELECT MIN(date) FROM seller_board_sales))`;
+function salesFrom(alias = 'sc') { return `${SALES_COMBINED} AS ${alias}`; }
+
 /* ═══════════ HELPERS ═══════════ */
 async function getShopMap() {
   const rows = await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL');
@@ -57,17 +63,14 @@ function defDates(start, end) {
   };
 }
 
-/* ═══════════ SAFE SQL FRAGMENTS (COALESCE everything) ═══════════ */
-// seller_board_day columns
-const D_SALES = 'COALESCE(salesOrganic,0)+COALESCE(salesPPC,0)';
-const D_UNITS = 'COALESCE(unitsOrganic,0)+COALESCE(unitsPPC,0)';
-const D_ADS   = 'COALESCE(sponsoredProducts,0)+COALESCE(sponsoredDisplay,0)+COALESCE(sponsoredBrands,0)+COALESCE(sponsoredBrandsVideo,0)+COALESCE(googleAds,0)+COALESCE(facebookAds,0)';
-// seller_board_product columns (with p. prefix)
-const P_SALES = 'COALESCE(p.salesOrganic,0)+COALESCE(p.salesPPC,0)';
-const P_UNITS = 'COALESCE(p.unitsOrganic,0)+COALESCE(p.unitsPPC,0)';
-const P_ADS   = 'COALESCE(p.sponsoredProducts,0)+COALESCE(p.sponsoredDisplay,0)+COALESCE(p.sponsoredBrands,0)+COALESCE(p.sponsoredBrandsVideo,0)+COALESCE(p.googleAds,0)+COALESCE(p.facebookAds,0)';
+/* ═══════════ SAFE SQL FRAGMENTS ═══════════ */
+const SC_SALES = 'COALESCE(sc.salesOrganic,0)+COALESCE(sc.salesPPC,0)';
+const SC_UNITS = 'COALESCE(sc.unitsOrganic,0)+COALESCE(sc.unitsPPC,0)';
+const SC_ADS   = 'COALESCE(sc.sponsoredProducts,0)+COALESCE(sc.sponsoredDisplay,0)+COALESCE(sc.sponsoredBrands,0)+COALESCE(sc.sponsoredBrandsVideo,0)';
+const P_SALES  = 'COALESCE(p.salesOrganic,0)+COALESCE(p.salesPPC,0)';
+const P_UNITS  = 'COALESCE(p.unitsOrganic,0)+COALESCE(p.unitsPPC,0)';
+const P_ADS    = 'COALESCE(p.sponsoredProducts,0)+COALESCE(p.sponsoredDisplay,0)+COALESCE(p.sponsoredBrands,0)+COALESCE(p.sponsoredBrandsVideo,0)+COALESCE(p.googleAds,0)+COALESCE(p.facebookAds,0)';
 
-// Build WHERE for seller_board_product p + asin a
 function pWhere(sd, ed, accId, seller, af) {
   let w = 'WHERE p.date BETWEEN ? AND ?'; const p = [sd, ed];
   if (accId) { w += ' AND p.accountId = ?'; p.push(accId); }
@@ -75,9 +78,9 @@ function pWhere(sd, ed, accId, seller, af) {
   if (af && af !== 'All') { w += ' AND p.asin = ?'; p.push(af); }
   return { w, p };
 }
-function dWhere(sd, ed, accId) {
-  let w = 'WHERE date BETWEEN ? AND ?'; const p = [sd, ed];
-  if (accId) { w += ' AND accountId = ?'; p.push(accId); }
+function scWhere(sd, ed, accId) {
+  let w = 'WHERE sc.date BETWEEN ? AND ?'; const p = [sd, ed];
+  if (accId) { w += ' AND sc.accountId = ?'; p.push(accId); }
   return { w, p };
 }
 function useProduct(seller, af) {
@@ -96,19 +99,18 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/debug/filters', async (req, res) => {
   const R = { version: VER, steps: {} };
   try {
-    R.steps.accounts = { ok: true, sample: (await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL LIMIT 3')) };
-    R.steps.sellers = { ok: true, sample: (await q('SELECT DISTINCT seller FROM asin WHERE seller IS NOT NULL AND LENGTH(seller) > 0 LIMIT 5')) };
-    const cols = await q('SHOW COLUMNS FROM asin_plan');
-    const sample = await q('SELECT * FROM asin_plan LIMIT 3');
-    R.steps.asinPlan = { ok: true, columns: cols.map(c => c.Field), sampleRows: sample };
-    const crit = await q('SELECT COUNT(DISTINCT CASE WHEN daysOfSupply <= 7 THEN sku END) as criticalSkus FROM fba_iventory_planning WHERE date = (SELECT MAX(date) FROM fba_iventory_planning)');
-    R.steps.criticalSkus = { ok: true, value: crit[0] };
-    const dr = await q('SELECT MIN(date) as mi, MAX(date) as mx FROM seller_board_day');
-    R.steps.dateRange = { ok: true, min: dr[0]?.mi, max: dr[0]?.mx };
-    const metrics = await q('SELECT DISTINCT metrics FROM asin_plan LIMIT 20');
-    R.steps.planMetrics = { ok: true, list: metrics.map(m => `${m.metrics}→${mapMetric(m.metrics)}`) };
-    const pc = await q('SELECT COUNT(*) as cnt FROM asin_plan');
-    R.steps.planRowCount = { ok: true, count: pc[0]?.cnt };
+    R.steps.accounts = (await q('SELECT id, shop FROM accounts WHERE deleted_at IS NULL LIMIT 3'));
+    const tables = (await q("SHOW TABLES")).map(r => Object.values(r)[0]);
+    R.steps.tables = tables;
+    try {
+      const dr = await q(`SELECT MIN(sc.date) as mi, MAX(sc.date) as mx FROM ${salesFrom()}`);
+      R.steps.combinedSalesRange = { min: dr[0]?.mi, max: dr[0]?.mx };
+      const minS = await q('SELECT MIN(date) as d FROM seller_board_sales');
+      const maxO = await q('SELECT MAX(date) as d FROM seller_board_sales_old');
+      R.steps.salesOverlap = { salesMin: minS[0]?.d, oldMax: maxO[0]?.d };
+    } catch(e) { R.steps.combinedSalesRange = e.message; }
+    R.steps.planMetrics = (await q('SELECT DISTINCT metrics FROM asin_plan LIMIT 20').catch(()=>[])).map(m=>`${m.metrics}→${mapMetric(m.metrics)}`);
+    try { R.steps.analyticsCols = (await q('SHOW COLUMNS FROM analytics_search_catalog_performance')).map(c=>c.Field); } catch(e) { R.steps.analyticsCols = e.message; }
   } catch (e) { R.globalError = e.message; }
   res.json(R);
 });
@@ -116,18 +118,15 @@ app.get('/api/debug/filters', async (req, res) => {
 /* ═══════════ DATE RANGE ═══════════ */
 app.get('/api/date-range', async (req, res) => {
   try {
-    const rows = await q('SELECT MIN(date) as minDate, MAX(date) as maxDate FROM seller_board_day');
+    const rows = await q(`SELECT MIN(sc.date) as minDate, MAX(sc.date) as maxDate FROM ${salesFrom()}`);
     const r = rows[0] || {};
     const maxDate = r.maxDate ? new Date(r.maxDate).toISOString().slice(0,10) : null;
     const minDate = r.minDate ? new Date(r.minDate).toISOString().slice(0,10) : null;
-    let defaultStart = null, defaultEnd = maxDate;
-    if (maxDate) {
-      const d = new Date(maxDate); d.setDate(d.getDate()-29);
-      defaultStart = d.toISOString().slice(0,10);
-      if (minDate && defaultStart < minDate) defaultStart = minDate;
-    }
-    // KEY FIX: defaultEnd = dbMaxDate (not today), so queries always hit real data
-    res.json({ minDate, maxDate, defaultStart, defaultEnd });
+    const today = new Date().toISOString().slice(0,10);
+    let defaultStart = new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    if (minDate && defaultStart < minDate) defaultStart = minDate;
+    // End date = today always
+    res.json({ minDate, maxDate, defaultStart, defaultEnd: today });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -141,12 +140,8 @@ app.get('/api/filters', async (req, res) => {
     const asm = {};
     asinShops.forEach(r => { if (!asm[r.asin]) asm[r.asin] = []; const sn = sm[r.accountId]; if (sn && !asm[r.asin].includes(sn)) asm[r.asin].push(sn); });
     const asins = await q("SELECT DISTINCT a.asin, a.seller FROM asin a WHERE a.asin REGEXP '^(AU-)?B0[A-Za-z0-9]{8}$' ORDER BY a.asin");
-    res.json({
-      shops: shops.map(s => ({ id: s.id, name: s.name })),
-      sellers: sellers.map(s => s.seller),
-      asins: asins.map(a => ({ asin: a.asin, seller: a.seller, shops: asm[a.asin] || [] })),
-    });
-  } catch (e) { console.error('FILTER ERROR:', e.message); res.status(500).json({ error: e.message }); }
+    res.json({ shops: shops.map(s=>({id:s.id,name:s.name})), sellers: sellers.map(s=>s.seller), asins: asins.map(a=>({asin:a.asin,seller:a.seller,shops:asm[a.asin]||[]})) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════ EXEC SUMMARY ═══════════ */
@@ -155,39 +150,40 @@ app.get('/api/exec/summary', async (req, res) => {
     const { start, end, store, seller, asin: af } = req.query;
     const { s, e } = defDates(start, end);
     const accId = await storeToAccId(store);
-    console.log('exec/summary:', { s, e, store, accId, seller, af, useP: useProduct(seller, af) });
-    let rows;
+    let rows, cogsVal = 0;
     if (useProduct(seller, af)) {
       const f = pWhere(s, e, accId, seller, af);
-      rows = await q(`SELECT
-        SUM(${P_SALES}) as sales, SUM(${P_UNITS}) as units, 0 as orders,
-        SUM(COALESCE(p.refunds,0)) as refunds,
-        SUM(${P_ADS}) as advCost,
+      rows = await q(`SELECT SUM(${P_SALES}) as sales, SUM(${P_UNITS}) as units, 0 as orders,
+        SUM(COALESCE(p.refunds,0)) as refunds, SUM(${P_ADS}) as advCost,
         0 as shippingCost, 0 as refundCost,
         SUM(COALESCE(p.amazonFees,0)) as amazonFees, SUM(COALESCE(p.costOfGoods,0)) as cogs,
         SUM(COALESCE(p.netProfit,0)) as netProfit, SUM(COALESCE(p.estimatedPayout,0)) as estPayout,
         SUM(COALESCE(p.sessions,0)) as sessions, SUM(COALESCE(p.grossProfit,0)) as grossProfit
         FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${f.w}`, f.p);
     } else {
-      const f = dWhere(s, e, accId);
-      rows = await q(`SELECT
-        SUM(${D_SALES}) as sales, SUM(${D_UNITS}) as units, SUM(COALESCE(orders,0)) as orders,
-        SUM(COALESCE(refunds,0)) as refunds,
-        SUM(${D_ADS}) as advCost,
-        SUM(COALESCE(shipping,0)) as shippingCost, SUM(COALESCE(refundCost,0)) as refundCost,
-        SUM(COALESCE(amazonFees,0)) as amazonFees, SUM(COALESCE(costOfGoods,0)) as cogs,
-        SUM(COALESCE(netProfit,0)) as netProfit, SUM(COALESCE(estimatedPayout,0)) as estPayout,
-        SUM(COALESCE(sessions,0)) as sessions, SUM(COALESCE(grossProfit,0)) as grossProfit
-        FROM seller_board_day ${f.w}`, f.p);
+      const f = scWhere(s, e, accId);
+      rows = await q(`SELECT SUM(${SC_SALES}) as sales, SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.orders,0)) as orders,
+        SUM(COALESCE(sc.refunds,0)) as refunds, SUM(${SC_ADS}) as advCost,
+        SUM(COALESCE(sc.shipping,0)) as shippingCost, SUM(COALESCE(sc.refundCost,0)) as refundCost,
+        SUM(COALESCE(sc.amazonFees,0)) as amazonFees,
+        SUM(COALESCE(sc.netProfit,0)) as netProfit, SUM(COALESCE(sc.estimatedPayout,0)) as estPayout,
+        SUM(COALESCE(sc.sessions,0)) as sessions, SUM(COALESCE(sc.grossProfit,0)) as grossProfit
+        FROM ${salesFrom()} ${f.w}`, f.p);
+      // COGS from seller_board_product (not in sales tables)
+      try {
+        let cw = 'WHERE p.date BETWEEN ? AND ?'; const cp = [s, e];
+        if (accId) { cw += ' AND p.accountId = ?'; cp.push(accId); }
+        const cr = await q(`SELECT SUM(COALESCE(p.costOfGoods,0)) as cogs FROM seller_board_product p ${cw}`, cp);
+        cogsVal = parseFloat(cr[0]?.cogs) || 0;
+      } catch(ce) {}
     }
     const r = rows[0] || {};
-    const sales = parseFloat(r.sales)||0, np = parseFloat(r.netProfit)||0;
-    console.log('exec/summary result: sales=', sales, 'np=', np, 'units=', r.units);
+    const sales = parseFloat(r.sales)||0, np = parseFloat(r.netProfit)||0, cogs = parseFloat(r.cogs)||cogsVal;
     res.json({
       sales, units: parseInt(r.units)||0, orders: parseInt(r.orders)||0, refunds: parseInt(r.refunds)||0,
       advCost: parseFloat(r.advCost)||0, shippingCost: parseFloat(r.shippingCost)||0,
       refundCost: parseFloat(r.refundCost)||0, amazonFees: parseFloat(r.amazonFees)||0,
-      cogs: parseFloat(r.cogs)||0, netProfit: np, estPayout: parseFloat(r.estPayout)||0,
+      cogs, netProfit: np, estPayout: parseFloat(r.estPayout)||0,
       grossProfit: parseFloat(r.grossProfit)||0, sessions: parseFloat(r.sessions)||0,
       realAcos: sales>0 ? (Math.abs(parseFloat(r.advCost)||0)/sales*100) : 0,
       pctRefunds: (parseInt(r.orders)||0)>0 ? ((parseInt(r.refunds)||0)/parseInt(r.orders)*100) : 0,
@@ -208,12 +204,12 @@ app.get('/api/exec/daily', async (req, res) => {
       rows = await q(`SELECT p.date, SUM(${P_SALES}) as revenue, SUM(COALESCE(p.netProfit,0)) as netProfit, SUM(${P_UNITS}) as units
         FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${f.w} GROUP BY p.date ORDER BY p.date`, f.p);
     } else {
-      const f = dWhere(s, e, accId);
-      rows = await q(`SELECT date, SUM(${D_SALES}) as revenue, SUM(COALESCE(netProfit,0)) as netProfit, SUM(${D_UNITS}) as units
-        FROM seller_board_day ${f.w} GROUP BY date ORDER BY date`, f.p);
+      const f = scWhere(s, e, accId);
+      rows = await q(`SELECT sc.date, SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.netProfit,0)) as netProfit, SUM(${SC_UNITS}) as units
+        FROM ${salesFrom()} ${f.w} GROUP BY sc.date ORDER BY sc.date`, f.p);
     }
     res.json(rows);
-  } catch (e) { console.error('exec/daily:', e.message); res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════ PRODUCT ASINS ═══════════ */
@@ -223,15 +219,16 @@ app.get('/api/product/asins', async (req, res) => {
     const { s, e } = defDates(start, end);
     const accId = await storeToAccId(store);
     const f = pWhere(s, e, accId, seller, af);
-    const rows = await q(`SELECT p.asin, a.store as brand, a.seller,
+    const shopMap = await getShopMap();
+    const rows = await q(`SELECT p.asin, p.accountId, a.seller,
       SUM(${P_SALES}) as revenue, SUM(COALESCE(p.netProfit,0)) as netProfit,
       SUM(${P_UNITS}) as units, AVG(COALESCE(p.realACOS,0)) as acos,
-      AVG(COALESCE(p.sessions,0)) as sessions, AVG(COALESCE(p.unitSessionPercentage,0)) as cr
+      SUM(COALESCE(p.sessions,0)) as sessions, AVG(COALESCE(p.unitSessionPercentage,0)) as cr
       FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin
-      ${f.w} GROUP BY p.asin, a.store, a.seller ORDER BY revenue DESC LIMIT 500`, f.p);
+      ${f.w} GROUP BY p.asin, p.accountId, a.seller ORDER BY revenue DESC LIMIT 500`, f.p);
     res.json(rows.map(r => {
       const rev = parseFloat(r.revenue)||0, np = parseFloat(r.netProfit)||0;
-      return { asin: r.asin, brand: r.brand||'', seller: r.seller||'', revenue: rev, netProfit: np, units: parseInt(r.units)||0,
+      return { asin: r.asin, shop: shopMap[r.accountId]||'', seller: r.seller||'', revenue: rev, netProfit: np, units: parseInt(r.units)||0,
         margin: rev>0?(np/rev*100):0, acos: parseFloat(r.acos)||0, roas: parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0, cr: parseFloat(r.cr)||0 };
     }));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -251,10 +248,10 @@ app.get('/api/shops', async (req, res) => {
         SUM(${P_UNITS}) as units, 0 as orders
         FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${f.w} GROUP BY p.accountId ORDER BY revenue DESC`, f.p);
     } else {
-      const f = dWhere(s, e, accId);
-      rows = await q(`SELECT accountId, SUM(${D_SALES}) as revenue, SUM(COALESCE(netProfit,0)) as netProfit,
-        SUM(${D_UNITS}) as units, SUM(COALESCE(orders,0)) as orders
-        FROM seller_board_day ${f.w} GROUP BY accountId ORDER BY revenue DESC`, f.p);
+      const f = scWhere(s, e, accId);
+      rows = await q(`SELECT sc.accountId, SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.netProfit,0)) as netProfit,
+        SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.orders,0)) as orders
+        FROM ${salesFrom()} ${f.w} GROUP BY sc.accountId ORDER BY revenue DESC`, f.p);
     }
     let stockMap = {};
     try { (await q('SELECT accountId, SUM(CAST(available AS SIGNED)) as fba FROM fba_iventory_planning WHERE date=(SELECT MAX(date) FROM fba_iventory_planning) GROUP BY accountId')).forEach(s=>{stockMap[s.accountId]=s.fba;}); } catch(e){}
@@ -271,11 +268,8 @@ app.get('/api/team', async (req, res) => {
     const { start, end, store, seller, asin: af } = req.query;
     const { s, e } = defDates(start, end);
     const accId = await storeToAccId(store);
-    console.log('Team:', { s, e, seller, store, af, accId });
-    // Step 1: seller map from asin table (fast, small)
     const sellerMap = {};
     (await q("SELECT asin, COALESCE(NULLIF(seller,''), 'Unassigned') as seller FROM asin")).forEach(r=>{sellerMap[r.asin]=r.seller;});
-    // Step 2: aggregate from seller_board_product (no JOIN = fast)
     let w = 'WHERE date BETWEEN ? AND ?'; const params = [s, e];
     if (af && af !== 'All') { w += ' AND asin = ?'; params.push(af); }
     if (accId) { w += ' AND accountId = ?'; params.push(accId); }
@@ -294,12 +288,10 @@ app.get('/api/team', async (req, res) => {
       agg[sl].units += parseInt(r.units)||0;
       agg[sl].asins.add(r.asin);
     });
-    const result = Object.entries(agg).map(([sl,d])=>({
+    res.json(Object.entries(agg).map(([sl,d])=>({
       seller: sl, revenue: d.revenue, netProfit: d.netProfit, units: d.units,
       margin: d.revenue>0?(d.netProfit/d.revenue*100):0, asinCount: d.asins.size,
-    })).sort((a,b)=>b.revenue-a.revenue).slice(0,100);
-    console.log('Team returned', result.length, 'sellers');
-    res.json(result);
+    })).sort((a,b)=>b.revenue-a.revenue).slice(0,100));
   } catch (e) { console.error('TEAM:', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -309,23 +301,35 @@ app.get('/api/inventory/snapshot', async (req, res) => {
     const accId = await storeToAccId(req.query.store);
     let extra = ''; const params = [];
     if (accId) { extra = ' AND accountId = ?'; params.push(accId); }
+    let totalFbaStock = 0;
+    try {
+      let sw = ''; const sp = [];
+      if (accId) { sw = ' AND accountId = ?'; sp.push(accId); }
+      const sr = await q(`SELECT SUM(COALESCE(FBAStock,0)) as fba FROM seller_board_stock_daily WHERE date=(SELECT MAX(date) FROM seller_board_stock_daily)${sw}`, sp);
+      totalFbaStock = parseInt(sr[0]?.fba) || 0;
+    } catch(e) {}
     const rows = await q(`SELECT
-      SUM(CAST(available AS SIGNED)) as fbaStock,
-      SUM(CAST(available AS SIGNED)+COALESCE(totalReservedQuantity,0)+COALESCE(inboundQuantity,0)) as totalInventory,
+      SUM(CAST(available AS SIGNED)) as availableInv,
       SUM(COALESCE(totalReservedQuantity,0)) as reserved, SUM(COALESCE(inboundQuantity,0)) as inbound,
       COUNT(DISTINCT CASE WHEN daysOfSupply<=7 THEN sku END) as criticalSkus,
       AVG(COALESCE(daysOfSupply,0)) as avgDaysOfSupply,
+      SUM(COALESCE(invAge0To90Days,0)) as a0,
       SUM(COALESCE(invAge91To180Days,0)) as a91, SUM(COALESCE(invAge181To270Days,0)) as a181,
       SUM(COALESCE(invAge271To365Days,0)) as a271, SUM(COALESCE(invAge365PlusDays,0)) as a365,
       SUM(COALESCE(estimatedStorageCostNextMonth,0)) as storageFee,
       AVG(COALESCE(sellThrough,0)) as avgSellThrough
       FROM fba_iventory_planning WHERE date=(SELECT MAX(date) FROM fba_iventory_planning)${extra}`, params);
     const r = rows[0]||{};
-    const fba=parseInt(r.fbaStock)||0, a91=parseInt(r.a91)||0, a181=parseInt(r.a181)||0, a271=parseInt(r.a271)||0, a365=parseInt(r.a365)||0;
-    res.json({ fbaStock: fba, availableInv: fba, totalInventory: parseInt(r.totalInventory)||0, reserved: parseInt(r.reserved)||0, inbound: parseInt(r.inbound)||0,
+    const avail=parseInt(r.availableInv)||0;
+    res.json({
+      fbaStock: totalFbaStock||avail, availableInv: avail,
+      totalInventory: avail+(parseInt(r.reserved)||0)+(parseInt(r.inbound)||0),
+      reserved: parseInt(r.reserved)||0, inbound: parseInt(r.inbound)||0,
       criticalSkus: parseInt(r.criticalSkus)||0, avgDaysOfSupply: Math.round(parseFloat(r.avgDaysOfSupply)||0),
-      age0_90: Math.max(0,fba-a91-a181-a271-a365), age91_180: a91, age181_270: a181, age271_365: a271, age365plus: a365,
-      storageFee: parseFloat(r.storageFee)||0, avgSellThrough: parseFloat(r.avgSellThrough)||0 });
+      age0_90: parseInt(r.a0)||0, age91_180: parseInt(r.a91)||0, age181_270: parseInt(r.a181)||0,
+      age271_365: parseInt(r.a271)||0, age365plus: parseInt(r.a365)||0,
+      storageFee: parseFloat(r.storageFee)||0, avgSellThrough: parseFloat(r.avgSellThrough)||0
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -340,48 +344,34 @@ app.get('/api/inventory/by-shop', async (req, res) => {
     const inv = await q('SELECT f.accountId, SUM(CAST(f.available AS SIGNED)) as fba, SUM(COALESCE(f.inboundQuantity,0)) as inb, SUM(COALESCE(f.totalReservedQuantity,0)) as res, COUNT(DISTINCT CASE WHEN f.daysOfSupply<=7 THEN f.sku END) as crit, AVG(COALESCE(f.sellThrough,0)) as st, AVG(COALESCE(f.daysOfSupply,0)) as dos FROM fba_iventory_planning f WHERE f.date=(SELECT MAX(date) FROM fba_iventory_planning) GROUP BY f.accountId').catch(()=>[]);
     const ids = new Set(inv.map(r=>r.accountId));
     let stk = []; try { stk = await q('SELECT accountId, SUM(FBAStock) as fba FROM seller_board_stock_daily WHERE date=(SELECT MAX(date) FROM seller_board_stock_daily) GROUP BY accountId'); } catch(e){}
-    const combined = inv.map(r=>({ shop: shopMap[r.accountId]||`Account ${r.accountId}`, fbaStock: parseInt(r.fba)||0, inbound: parseInt(r.inb)||0, reserved: parseInt(r.res)||0, criticalSkus: parseInt(r.crit)||0, sellThrough: parseFloat(r.st)||0, daysOfSupply: parseFloat(r.dos)||0 }));
-    stk.forEach(r=>{ if(!ids.has(r.accountId)) combined.push({ shop: shopMap[r.accountId]||`Account ${r.accountId}`, fbaStock: parseInt(r.fba)||0, inbound:0, reserved:0, criticalSkus:0, sellThrough:0, daysOfSupply:0 }); });
+    const combined = inv.map(r=>({shop:shopMap[r.accountId]||`Account ${r.accountId}`,fbaStock:parseInt(r.fba)||0,inbound:parseInt(r.inb)||0,reserved:parseInt(r.res)||0,criticalSkus:parseInt(r.crit)||0,sellThrough:parseFloat(r.st)||0,daysOfSupply:parseFloat(r.dos)||0}));
+    stk.forEach(r=>{if(!ids.has(r.accountId))combined.push({shop:shopMap[r.accountId]||`Account ${r.accountId}`,fbaStock:parseInt(r.fba)||0,inbound:0,reserved:0,criticalSkus:0,sellThrough:0,daysOfSupply:0});});
     combined.sort((a,b)=>b.fbaStock-a.fbaStock);
     res.json(combined);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════ ASIN PLAN ═══════════ */
-const MS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const METRICS_MAP = {
-  'Rev':'rv', 'Unit':'un', 'Ads':'ad', 'GP':'gp', 'NP':'gp',
-  'Session':'se', 'Impression':'im', 'CR':'cr', 'CTR':'ct',
-  'Price':'pr', 'CPM':'cpm', 'CPC':'cpc', 'Cogs':'cg',
-  'AMZ fee':'af', 'Gross Profit':'gp',
-  'rev':'rv', 'unit':'un', 'ads':'ad', 'gp':'gp', 'np':'gp',
-  'session':'se', 'impression':'im', 'cr':'cr', 'ctr':'ct',
-  'price':'pr', 'cpm':'cpm', 'cpc':'cpc', 'cogs':'cg',
-  'amz fee':'af', 'gross profit':'gp',
-  'revenue':'rv', 'Revenue':'rv', 'units':'un', 'Units':'un',
-  'grossProfit':'gp', 'adSpend':'ad', 'Ad Spend':'ad',
-  'sessions':'se', 'Sessions':'se', 'impressions':'im', 'Impressions':'im',
-};
+const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const METRICS_MAP={'Rev':'rv','Unit':'un','Ads':'ad','GP':'gp','NP':'gp','Session':'se','Impression':'im','CR':'cr','CTR':'ct','Price':'pr','CPM':'cpm','CPC':'cpc','Cogs':'cg','AMZ fee':'af','Gross Profit':'gp','rev':'rv','unit':'un','ads':'ad','gp':'gp','np':'gp','session':'se','impression':'im','cr':'cr','ctr':'ct','price':'pr','cpm':'cpm','cpc':'cpc','cogs':'cg','amz fee':'af','gross profit':'gp','revenue':'rv','Revenue':'rv','units':'un','Units':'un','grossProfit':'gp','adSpend':'ad','Ad Spend':'ad','sessions':'se','Sessions':'se','impressions':'im','Impressions':'im'};
 function mapMetric(m) {
   if (!m) return null;
-  const trimmed = m.trim();
-  if (METRICS_MAP[trimmed]) return METRICS_MAP[trimmed];
-  if (METRICS_MAP[trimmed.toLowerCase()]) return METRICS_MAP[trimmed.toLowerCase()];
-  const lm = trimmed.toLowerCase();
-  if (lm.includes('revenue')||lm.includes('sales')||lm==='rv') return 'rv';
-  if (lm==='gp'||lm==='np'||(lm.includes('gross')&&lm.includes('profit'))||(lm.includes('net')&&lm.includes('profit'))) return 'gp';
-  if (lm==='ads'||lm==='ad'||lm==='ad spend'||lm==='adspend') return 'ad';
-  if (lm.includes('unit')||lm==='un') return 'un';
-  if (lm.includes('session')||lm==='se') return 'se';
-  if (lm.includes('impression')||lm==='im') return 'im';
-  if (lm==='cr'||lm==='conversion'||lm==='conv. rate'||lm==='conv rate') return 'cr';
+  const t = m.trim();
+  if (METRICS_MAP[t]) return METRICS_MAP[t];
+  const lm = t.toLowerCase();
+  if (METRICS_MAP[lm]) return METRICS_MAP[lm];
+  if (lm.includes('revenue')||lm.includes('sales')) return 'rv';
+  if (lm==='gp'||lm==='np'||lm.includes('gross profit')||lm.includes('net profit')) return 'gp';
+  if (lm==='ads'||lm==='ad'||lm==='ad spend') return 'ad';
+  if (lm.includes('unit')) return 'un';
+  if (lm.includes('session')) return 'se';
+  if (lm.includes('impression')) return 'im';
+  if (lm==='cr'||lm==='conversion') return 'cr';
   if (lm==='ctr'||lm==='click') return 'ct';
-  if (lm==='price'||lm==='pr') return 'pr';
-  if (lm==='cpm') return 'cpm';
-  if (lm==='cpc') return 'cpc';
+  if (lm==='price') return 'pr';
+  if (lm==='cpm') return 'cpm'; if (lm==='cpc') return 'cpc';
   if (lm==='cogs'||lm==='cost of goods') return 'cg';
   if (lm.includes('amz')||lm.includes('amazon fee')) return 'af';
-  console.log('Unknown metric:', m);
   return null;
 }
 
@@ -391,64 +381,61 @@ app.get('/api/plan/data', async (req, res) => {
     const yr = year || new Date().getFullYear();
     let cols;
     try { cols = (await q('SHOW COLUMNS FROM asin_plan')).map(c=>c.Field); }
-    catch { return res.json({ kpi:{}, monthlyPlan:{}, asinPlan:{} }); }
-
+    catch { return res.json({kpi:{},monthlyPlan:{},asinPlan:{}}); }
     const hasYear = cols.includes('year');
     let where = hasYear ? 'WHERE ap.`year` = ?' : 'WHERE 1=1';
     let params = hasYear ? [yr] : [];
-
-    if (month && month !== 'All') {
-      const mn = parseInt(month);
-      if (mn>=1 && mn<=12) { where += ' AND ap.month_num = ?'; params.push(mn); }
-    }
+    if (month && month !== 'All') { const mn=parseInt(month); if(mn>=1&&mn<=12){where+=' AND ap.month_num = ?';params.push(mn);} }
     if (store && store !== 'All') {
       const accId = await storeToAccId(store);
-      if (accId) {
-        where += ' AND (ap.brand_name = ? OR ap.asin IN (SELECT DISTINCT asin FROM seller_board_product WHERE accountId = ?))';
-        params.push(store, accId);
-      } else {
-        where += ' AND ap.brand_name = ?';
-        params.push(store);
-      }
+      if (accId) { where+=' AND (ap.brand_name = ? OR ap.asin IN (SELECT DISTINCT asin FROM seller_board_product WHERE accountId = ?))'; params.push(store, accId); }
+      else { where+=' AND ap.brand_name = ?'; params.push(store); }
     }
-    if (af && af !== 'All') { where += ' AND ap.asin = ?'; params.push(af); }
-    if (seller && seller !== 'All') { where += ' AND a.seller = ?'; params.push(seller); }
+    if (af && af !== 'All') { where+=' AND ap.asin = ?'; params.push(af); }
+    if (seller && seller !== 'All') { where+=' AND a.seller = ?'; params.push(seller); }
+    const rows = await q(`SELECT ap.asin, ap.brand_name, ap.month_num, ap.metrics, CAST(ap.value AS DECIMAL(20,4)) as value
+      FROM asin_plan ap LEFT JOIN asin a ON ap.asin=a.asin ${where} ORDER BY ap.month_num`, params, 45000);
 
-    console.log('plan/data WHERE:', where, 'params:', params);
-    const rows = await q(
-      `SELECT ap.asin, ap.brand_name, ap.month_num, ap.metrics, CAST(ap.value AS DECIMAL(20,4)) as value
-       FROM asin_plan ap LEFT JOIN asin a ON ap.asin = a.asin ${where}
-       ORDER BY ap.month_num`, params, 45000
-    );
-    const distinctMetrics = [...new Set(rows.map(r=>r.metrics))];
-    console.log('Plan:', rows.length, 'rows, metrics:', distinctMetrics.map(m=>`${m}→${mapMetric(m)}`).join(', '));
-
-    const monthlyPlan = {}, asinPlan = {};
+    const monthlyPlan={}, asinPlan={};
     rows.forEach(r => {
-      const mk = mapMetric(r.metrics); if (!mk) return;
-      const mn = r.month_num, val = parseFloat(r.value)||0;
-      if (!monthlyPlan[mn]) monthlyPlan[mn] = {};
-      monthlyPlan[mn][mk] = (monthlyPlan[mn][mk]||0) + val;
-      const key = r.asin;
-      if (!asinPlan[key]) asinPlan[key] = { brand: r.brand_name, months: {} };
-      if (!asinPlan[key].months[mn]) asinPlan[key].months[mn] = {};
-      asinPlan[key].months[mn][mk] = (asinPlan[key].months[mn][mk]||0) + val;
+      const mk=mapMetric(r.metrics); if(!mk) return;
+      const mn=r.month_num, val=parseFloat(r.value)||0;
+      if(!monthlyPlan[mn]) monthlyPlan[mn]={};
+      monthlyPlan[mn][mk]=(monthlyPlan[mn][mk]||0)+val;
+      const key=r.asin;
+      if(!asinPlan[key]) asinPlan[key]={brand:r.brand_name,months:{}};
+      if(!asinPlan[key].months[mn]) asinPlan[key].months[mn]={};
+      asinPlan[key].months[mn][mk]=(asinPlan[key].months[mn][mk]||0)+val;
     });
 
-    // KPI totals — CR/CTR are averages, rest are sums
-    const kpi = {gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
-    const crArr = [], ctArr = [];
+    // KPI: CR weighted = Units/Sessions, CTR weighted = Sessions/Impressions
+    const kpi={gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
+    const crDirect=[], ctDirect=[];
     Object.values(monthlyPlan).forEach(mp => {
-      ['gp','rv','ad','un','se','im'].forEach(k => { kpi[k].p += mp[k]||0; });
-      if (mp.cr) crArr.push(mp.cr);
-      if (mp.ct) ctArr.push(mp.ct);
+      ['gp','rv','ad','un','se','im'].forEach(k=>{kpi[k].p+=mp[k]||0;});
+      if(mp.cr) crDirect.push(mp.cr);
+      if(mp.ct) ctDirect.push(mp.ct);
     });
-    kpi.cr.p = crArr.length ? crArr.reduce((s,v)=>s+v,0)/crArr.length : 0;
-    kpi.ct.p = ctArr.length ? ctArr.reduce((s,v)=>s+v,0)/ctArr.length : 0;
+    // Weighted CR (preferred) or fallback direct/100
+    if(kpi.se.p>0&&kpi.un.p>0) kpi.cr.p=kpi.un.p/kpi.se.p;
+    else if(crDirect.length) kpi.cr.p=(crDirect.reduce((s,v)=>s+v,0)/crDirect.length)/100;
+    // Weighted CTR or fallback
+    if(kpi.im.p>0&&kpi.se.p>0) kpi.ct.p=kpi.se.p/kpi.im.p;
+    else if(ctDirect.length) kpi.ct.p=(ctDirect.reduce((s,v)=>s+v,0)/ctDirect.length)/100;
 
-    console.log('Plan KPI:', Object.entries(kpi).map(([k,v])=>`${k}:p=${v.p.toFixed(1)}`).join(', '));
-    res.json({ kpi, monthlyPlan, asinPlan });
-  } catch (e) { console.error('plan/data:', e.message); res.status(500).json({ error: e.message }); }
+    // Per-month plan CR/CTR (weighted per month)
+    for (const mn in monthlyPlan) {
+      const mp = monthlyPlan[mn];
+      if (mp.un && mp.se) mp.crW = mp.un / mp.se;
+      else if (mp.cr) mp.crW = mp.cr / 100;
+      else mp.crW = 0;
+      if (mp.se && mp.im) mp.ctW = mp.se / mp.im;
+      else if (mp.ct) mp.ctW = mp.ct / 100;
+      else mp.ctW = 0;
+    }
+
+    res.json({kpi,monthlyPlan,asinPlan});
+  } catch (e) { console.error('plan/data:', e.message); res.status(500).json({error:e.message}); }
 });
 
 app.get('/api/plan/actuals', async (req, res) => {
@@ -456,88 +443,73 @@ app.get('/api/plan/actuals', async (req, res) => {
     const { year, store, seller, asin: af } = req.query;
     const yr = year || new Date().getFullYear();
     const accId = await storeToAccId(store);
-    const f = pWhere(`${yr}-01-01`, `${yr}-12-31`, accId, seller, af);
 
-    // Check which columns exist for safe queries
-    let hasPageViews = false, hasCTR = false;
+    // Source 1: Revenue, GP, Units, Sessions from combined sales
+    const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
+    const salesRows = await q(`SELECT MONTH(sc.date) as mn,
+      SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp,
+      SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions
+      FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
+
+    // Source 2: Ads from seller_board_product
+    const pF = pWhere(`${yr}-01-01`,`${yr}-12-31`,accId,seller,af);
+    const adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
+      FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
+
+    // Source 3: Impressions + Clicks from analytics_search_catalog_performance
+    let impRows = [];
     try {
-      const prodCols = (await q('SHOW COLUMNS FROM seller_board_product')).map(c => c.Field);
-      hasPageViews = prodCols.includes('pageViews');
-      hasCTR = prodCols.includes('clickThroughRate');
-    } catch(e) {}
+      let iw='WHERE YEAR(startDate)=?'; const ip=[yr];
+      if(accId){iw+=' AND accountId=?';ip.push(accId);}
+      impRows = await q(`SELECT MONTH(startDate) as mn, SUM(COALESCE(impressionCount,0)) as imp, SUM(COALESCE(clickCount,0)) as clicks
+        FROM analytics_search_catalog_performance ${iw} GROUP BY MONTH(startDate)`, ip, 45000);
+    } catch(e) { console.warn('analytics not available:', e.message); }
 
-    const impressionCol = hasPageViews ? 'SUM(COALESCE(p.pageViews,0))' : '0';
-    const ctrCol = hasCTR ? 'AVG(COALESCE(p.clickThroughRate,0))' : '0';
+    // Merge all into monthly
+    const monthly = {};
+    for(let m=1;m<=12;m++) monthly[m]={rv:0,gp:0,un:0,se:0,ad:0,im:0,clicks:0};
+    salesRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.rv=parseFloat(r.revenue)||0;m.gp=parseFloat(r.gp)||0;m.un=parseInt(r.units)||0;m.se=parseFloat(r.sessions)||0;});
+    adsRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.ad=parseFloat(r.ads)||0;});
+    impRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.im=parseFloat(r.imp)||0;m.clicks=parseFloat(r.clicks)||0;});
 
-    const rows = await q(`SELECT p.asin, a.store as brand, a.seller, MONTH(p.date) as month_num,
-      SUM(${P_UNITS}) as units,
-      SUM(${P_SALES}) as revenue,
-      SUM(${P_ADS}) as ads,
-      SUM(COALESCE(p.grossProfit,0)) as grossProfit,
-      SUM(COALESCE(p.sessions,0)) as sessions,
-      ${impressionCol} as impressions,
-      AVG(COALESCE(p.unitSessionPercentage,0)) as cr,
-      ${ctrCol} as ctr
-      FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${f.w}
-      GROUP BY p.asin, a.store, a.seller, MONTH(p.date) ORDER BY grossProfit DESC`, f.p, 45000);
-
-    const monthly = {}, asinData = {};
-    rows.forEach(r => {
-      const mn = r.month_num;
-      if (!monthly[mn]) monthly[mn] = {rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-      monthly[mn].rv += parseFloat(r.revenue)||0;
-      monthly[mn].gp += parseFloat(r.grossProfit)||0;
-      monthly[mn].ad += parseFloat(r.ads)||0;
-      monthly[mn].un += parseInt(r.units)||0;
-      monthly[mn].se += parseFloat(r.sessions)||0;
-      monthly[mn].im += parseFloat(r.impressions)||0;
-      if (r.cr) monthly[mn].cr.push(parseFloat(r.cr));
-      if (r.ctr) monthly[mn].ct.push(parseFloat(r.ctr));
-
-      const key = r.asin;
-      if (!asinData[key]) asinData[key] = { brand: r.brand, seller: r.seller, months: {} };
-      if (!asinData[key].months[mn]) asinData[key].months[mn] = {rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:0,ct:0};
-      asinData[key].months[mn].rv += parseFloat(r.revenue)||0;
-      asinData[key].months[mn].gp += parseFloat(r.grossProfit)||0;
-      asinData[key].months[mn].ad += parseFloat(r.ads)||0;
-      asinData[key].months[mn].un += parseInt(r.units)||0;
-      asinData[key].months[mn].se += parseFloat(r.sessions)||0;
-      asinData[key].months[mn].im += parseFloat(r.impressions)||0;
-      asinData[key].months[mn].cr = parseFloat(r.cr)||0;
-      asinData[key].months[mn].ct = parseFloat(r.ctr)||0;
-    });
-
-    const monthlyArr = [];
-    for (let m=1; m<=12; m++) {
-      const d = monthly[m] || {rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-      const crAvg = d.cr.length ? d.cr.reduce((s,v)=>s+v,0)/d.cr.length : 0;
-      const ctAvg = d.ct.length ? d.ct.reduce((s,v)=>s+v,0)/d.ct.length : 0;
-      monthlyArr.push({
-        m: MS[m-1], mn: m, ra: d.rv, gpa: d.gp, aa: d.ad, ua: d.un,
-        sa: d.se, ia: d.im,
-        cra: Math.round(crAvg*100)/100,
-        cta: Math.round(ctAvg*100)/100
-      });
+    const monthlyArr=[];
+    for(let m=1;m<=12;m++){
+      const d=monthly[m];
+      const cr=d.se>0?d.un/d.se:0;
+      const ctr=d.im>0?d.clicks/d.im:0;
+      monthlyArr.push({m:MS[m-1],mn:m,ra:d.rv,gpa:d.gp,aa:d.ad,ua:d.un,sa:d.se,ia:d.im,
+        cra:Math.round(cr*10000)/10000, cta:Math.round(ctr*10000)/10000});
     }
 
-    const asinBreakdown = Object.entries(asinData).map(([asin,d]) => {
-      const t = {rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
-      Object.values(d.months).forEach(m => {
-        t.rv+=m.rv; t.gp+=m.gp; t.ad+=m.ad; t.un+=m.un; t.se+=m.se; t.im+=m.im;
-        if (m.cr) t.cr.push(m.cr); if (m.ct) t.ct.push(m.ct);
-      });
-      const crAvg = t.cr.length ? t.cr.reduce((s,v)=>s+v,0)/t.cr.length : 0;
-      const ctAvg = t.ct.length ? t.ct.reduce((s,v)=>s+v,0)/t.ct.length : 0;
-      return {
-        a: asin, br: d.brand||'', sl: d.seller||'',
-        ra: t.rv, ga: t.gp, aa: t.ad, ua: t.un, sa: t.se, ia: t.im,
-        cra: Math.round(crAvg*100)/100, cta: Math.round(ctAvg*100)/100,
-        months: d.months
-      };
-    }).sort((a,b) => b.ga-a.ga);
+    // ASIN breakdown from seller_board_product
+    const asinRows = await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
+      SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp,
+      SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
+      FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin
+      LEFT JOIN (SELECT DISTINCT asin, brand_name FROM asin_plan) ap2 ON p.asin=ap2.asin
+      ${pF.w} GROUP BY p.asin, ap2.brand_name, a.seller, MONTH(p.date) ORDER BY gp DESC`, pF.p, 45000);
 
-    res.json({ monthly: monthlyArr, asinBreakdown });
-  } catch (e) { console.error('plan/actuals:', e.message); res.status(500).json({ error: e.message }); }
+    const asinData={};
+    asinRows.forEach(r=>{
+      const key=r.asin, mn=r.mn;
+      if(!asinData[key]) asinData[key]={brand:r.planBrand||'',seller:r.seller||'',months:{}};
+      if(!asinData[key].months[mn]) asinData[key].months[mn]={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:0,ct:0};
+      const md=asinData[key].months[mn];
+      md.rv+=parseFloat(r.revenue)||0;md.gp+=parseFloat(r.gp)||0;md.ad+=parseFloat(r.ads)||0;
+      md.un+=parseInt(r.units)||0;md.se+=parseFloat(r.sessions)||0;
+      md.cr=md.se>0?md.un/md.se:0;
+    });
+
+    const asinBreakdown=Object.entries(asinData).map(([asin,d])=>{
+      const t={rv:0,gp:0,ad:0,un:0,se:0,im:0};
+      Object.values(d.months).forEach(m=>{t.rv+=m.rv;t.gp+=m.gp;t.ad+=m.ad;t.un+=m.un;t.se+=m.se;});
+      const cr=t.se>0?t.un/t.se:0;
+      return{a:asin,br:d.brand,sl:d.seller,ra:t.rv,ga:t.gp,aa:t.ad,ua:t.un,sa:t.se,ia:t.im,
+        cra:Math.round(cr*10000)/10000,cta:0,months:d.months};
+    }).sort((a,b)=>b.ga-a.ga);
+
+    res.json({monthly:monthlyArr,asinBreakdown});
+  } catch (e) { console.error('plan/actuals:', e.message); res.status(500).json({error:e.message}); }
 });
 
 /* ═══════════ OPS DAILY ═══════════ */
@@ -550,15 +522,13 @@ app.get('/api/ops/daily', async (req, res) => {
     if (useProduct(seller, af)) {
       const f = pWhere(s, e, accId, seller, af);
       rows = await q(`SELECT p.date, SUM(${P_SALES}) as revenue, SUM(COALESCE(p.netProfit,0)) as netProfit,
-        SUM(${P_UNITS}) as units, 0 as orders,
-        SUM(${P_ADS}) as adSpend
+        SUM(${P_UNITS}) as units, 0 as orders, SUM(${P_ADS}) as adSpend
         FROM seller_board_product p LEFT JOIN asin a ON p.asin=a.asin ${f.w} GROUP BY p.date ORDER BY p.date DESC LIMIT 60`, f.p);
     } else {
-      const f = dWhere(s, e, accId);
-      rows = await q(`SELECT date, SUM(${D_SALES}) as revenue, SUM(COALESCE(netProfit,0)) as netProfit,
-        SUM(${D_UNITS}) as units, SUM(COALESCE(orders,0)) as orders,
-        SUM(${D_ADS}) as adSpend
-        FROM seller_board_day ${f.w} GROUP BY date ORDER BY date DESC LIMIT 60`, f.p);
+      const f = scWhere(s, e, accId);
+      rows = await q(`SELECT sc.date, SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.netProfit,0)) as netProfit,
+        SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.orders,0)) as orders, SUM(${SC_ADS}) as adSpend
+        FROM ${salesFrom()} ${f.w} GROUP BY sc.date ORDER BY sc.date DESC LIMIT 60`, f.p);
     }
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -572,12 +542,12 @@ app.post('/api/ai/insight', async (req, res) => {
     const { context, question } = req.body;
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, system:'You are an Amazon FBA analyst. Give actionable insights in 300-500 words.',
-        messages:[{role:'user',content:`Data:\n${JSON.stringify(context,null,2)}\n\n${question||'Analyze.'}`}] }),
+      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system:'You are an Amazon FBA analyst. Give actionable insights in 300-500 words.',
+        messages:[{role:'user',content:`Data:\n${JSON.stringify(context,null,2)}\n\n${question||'Analyze.'}`}]}),
     });
     const data = await r.json();
-    res.json({ insight: data.content?.[0]?.text || 'Unable to generate' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({insight:data.content?.[0]?.text||'Unable to generate'});
+  } catch (e) { res.status(500).json({error:e.message}); }
 });
 
 /* ═══════════ SERVE FRONTEND ═══════════ */
