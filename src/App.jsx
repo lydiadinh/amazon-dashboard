@@ -146,7 +146,6 @@ function InvPage({t,mob,invData,invShop,invTrend}){
 
 /* ═══════════ ASIN PLAN ═══════════ */
 function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
-  const fPlanBk=asinPlanBkData||[];
   const isF=(seller&&seller!=="All")||(brand&&brand!=="All")||(asinF&&asinF!=="All");
   const[trendMetric,setTrendMetric]=useState("gp");
   const[kpiMonth,setKpiMonth]=useState("All");
@@ -155,7 +154,7 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
   const mK={gp:{a:"gpa",p:"gpp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"},se:{a:"sa",p:"sp"},im:{a:"ia",p:"ip"},cr:{a:"cra",p:"crp"},ct:{a:"cta",p:"ctp"}};
   
   const mpd=monthPlanData||[];
-  const hasData=mpd.some(m=>(m.gpa||0)+(m.gpp||0)+(m.ra||0)+(m.rp||0)>0)||fPlanBk.length>0;
+  const hasData=mpd.some(m=>(m.gpa||0)+(m.gpp||0)+(m.ra||0)+(m.rp||0)>0)||(asinPlanBkData||[]).length>0;
   const trendData=mpd.map(m=>{const ak=mK[trendMetric].a,pk2=mK[trendMetric].p;return{m:m.m,Actual:m[ak],Plan:m[pk2]}});
   const isCur=["gp","rv","ad"].includes(trendMetric);const isPct=["cr","ct"].includes(trendMetric);
   const kpiData=useMemo(()=>{
@@ -164,6 +163,16 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
     const mi=MS.indexOf(kpiMonth);const m=mpd[mi];if(!m)return pk;
     return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:m.cra,p:m.crp},ct:{a:m.cta,p:m.ctp}};
   },[kpiMonth,planKpi,mpd]);
+  // Filter ASIN Breakdown by selected month
+  const fPlanBk=useMemo(()=>{
+    const raw=asinPlanBkData||[];
+    if(tblMonth==="All")return raw;
+    const mi=MS.indexOf(tblMonth)+1;
+    return raw.map(r=>{
+      const md=r.mData?.[mi]||r.mData?.[String(mi)]||{};
+      return{...r,ga:md.ga||0,gp:md.gp||0,ra:md.ra||0,rp:md.rp||0,aa:md.aa||0,ap:md.ap||0,ua:md.ua||0,up:md.up||0,sa:md.sa||0,sp:md.sp||0,ia:md.ia||0,ip:md.ip||0,cra:md.cra||0,crp:md.crp||0,cta:md.cta||0,ctp:md.ctp||0};
+    }).filter(r=>(r.ga||0)+(r.gp||0)+(r.ra||0)+(r.rp||0)+(r.ua||0)+(r.up||0)>0);
+  },[tblMonth,asinPlanBkData]);
   const THD=["Month","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
   const AHDL=["ASIN","Brand","⭐ GP","REVENUE","ADS","UNITS","SESSIONS","IMP","CR","CTR"];
   return<div>
@@ -324,9 +333,9 @@ export default function App(){
               }
             }
           }
-          api("inventory/snapshot").then(d=>setInvData(d||{})).catch(()=>{});
-          api("inventory/by-shop").then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
-          api("inventory/stock-trend").then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))).catch(()=>{});
+          api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
+          api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
+          api("inventory/stock-trend",{store}).then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))).catch(()=>{});
         }
       }catch(e){console.error("INIT ERROR:",e)}
       setDbConnecting(false);
@@ -361,11 +370,11 @@ export default function App(){
         console.log("product/asins:",Array.isArray(asins)?asins.length+" rows":"NOT ARRAY");
         if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
         // Shops
-        const shops=await api("shops",{start:sd,end:ed,store,seller}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
+        const shops=await api("shops",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
         console.log("shops:",Array.isArray(shops)?shops.length+" rows":"NOT ARRAY");
         if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
         // Team
-        const team=await api("team",{start:sd,end:ed,seller,store}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
+        const team=await api("team",{start:sd,end:ed,seller,store,brand,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
         console.log("team:",Array.isArray(team)?team.length+" rows":"NOT ARRAY",JSON.stringify(team).slice(0,200));
         if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
         console.log("=== DATA FETCH DONE ===");
@@ -408,7 +417,7 @@ export default function App(){
         });
         setMonthPlanState(mpd);
 
-        // Build asinBreakdown: merge plan + actuals per ASIN
+        // Build asinBreakdown: merge plan + actuals per ASIN with per-month data
         const allAsins=new Set([...Object.keys(asinPlan),...asinBk.map(a=>a.a)]);
         const abk=[...allAsins].map(asin=>{
           const pd=asinPlan[asin]||{brand:"",months:{}};const ad=asinBk.find(a=>a.a===asin)||{};
@@ -416,7 +425,14 @@ export default function App(){
           let pTot={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
           Object.values(pd.months||{}).forEach(m=>{pTot.rv+=m.rv||0;pTot.gp+=m.gp||0;pTot.ad+=m.ad||0;pTot.un+=m.un||0;pTot.se+=m.se||0;if(m.cr)pTot.cr.push(m.cr);});
           const crP=pTot.cr.length?pTot.cr.reduce((s,v)=>s+v,0)/pTot.cr.length:0;
-          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0};
+          // Build per-month merged data
+          const allMonths=new Set([...Object.keys(pd.months||{}),...Object.keys(ad.months||{})]);
+          const mData={};
+          allMonths.forEach(mn=>{
+            const pm=pd.months?.[mn]||{};const am=ad.months?.[mn]||{};
+            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:0,ctp:0};
+          });
+          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0,mData};
         }).sort((a,b)=>(b.ga||0)-(a.ga||0));
         setAsinPlanBkState(abk);
       }catch(e){console.error("Plan fetch error:",e)}
@@ -430,9 +446,9 @@ export default function App(){
 
   // Filter visibility per page
   const showStore=["exec","prod","shops","team","daily"].includes(pg);
-  const showSeller=["exec","prod","shops","team","plan"].includes(pg);
-  const showBrand=["exec","plan","prod"].includes(pg);
-  const showAsin=["exec","plan","prod"].includes(pg);
+  const showSeller=["exec","prod","shops","team","plan","daily"].includes(pg);
+  const showBrand=["exec","plan","prod","shops","team","daily"].includes(pg);
+  const showAsin=["exec","plan","prod","shops","team","daily"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting..."/></div>;
 
