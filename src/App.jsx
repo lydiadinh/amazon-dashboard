@@ -140,14 +140,11 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
 }
 
 /* ═══════════ INVENTORY ═══════════ */
-function InvPage({t,mob,invData,invShop,invTrend,invFeeTrend}){
+function InvPage({t,mob,invData,invShop,invTrend}){
   const d=invData||{};
   const fee=d.storageFee||0;
-  const feeTrend=invFeeTrend||[];
-  // Calculate fee change vs first data point
-  const feeChg=feeTrend.length>=2?((feeTrend[feeTrend.length-1].v-feeTrend[0].v)/Math.max(feeTrend[0].v,1)*100):0;
   return<div>
-    <Cd t={t} style={{padding:"10px 16px",marginBottom:14,borderLeft:"3px solid "+t.blue}}><div style={{fontSize:11,color:t.textSec}}>💡 Latest inventory snapshot. Storage Fee Trend shows weekly history (90 days).</div></Cd>
+    <Cd t={t} style={{padding:"10px 16px",marginBottom:14,borderLeft:"3px solid "+t.blue}}><div style={{fontSize:11,color:t.textSec}}>💡 Latest inventory snapshot. No time filter needed.</div></Cd>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12,marginBottom:16}}>
       <KpiCard title="FBA Stock" value={N(d.fbaStock||0)} icon="📦" t={t} tip={TIPS.fbaStock}/><KpiCard title="Available" value={N(d.availableInv||0)} icon="🗃" t={t} tip={TIPS.invAvail}/><KpiCard title="Reserved" value={N(d.reserved||0)} icon="🔒" t={t} tip={TIPS.invReserved}/><KpiCard title="Critical SKUs" value={N(d.criticalSkus||0)} icon="🚨" t={t} tip={TIPS.invCritical}/><KpiCard title="Inbound" value={N(d.inbound||0)} icon="📥" t={t} tip={TIPS.invInbound}/><KpiCard title="Avg Days Supply" value={Math.round(d.avgDaysOfSupply||0)} icon="📈" t={t} tip={TIPS.invDaysSupply}/><KpiCard title="Storage Fee" value={$2(fee)} icon="💰" t={t} tip={TIPS.storageFee}/>
     </div>
@@ -157,9 +154,6 @@ function InvPage({t,mob,invData,invShop,invTrend,invFeeTrend}){
     </div>
     <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:14,marginTop:14}}>
       <Sec title="Inventory Aging" icon="📊" t={t}><Cd t={t} style={{position:"relative"}}>{(()=>{const over90=(d.age91_180||0)+(d.age181_270||0)+(d.age271_365||0)+(d.age365plus||0);return over90>0&&<div style={{position:"absolute",top:8,right:12,background:over90>50000?t.redBg:t.orangeBg,color:over90>50000?t.red:t.orange,padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,zIndex:1}}>90d+ stock: {N(over90)} units</div>})()}<ResponsiveContainer width="100%" height={220}><BarChart data={[{name:"0-90d",v:d.age0_90||0},{name:"91-180d",v:d.age91_180||0},{name:"181-270d",v:d.age181_270||0},{name:"271-365d",v:d.age271_365||0},{name:"365d+",v:d.age365plus||0}]}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="name" tick={{fill:t.textMuted,fontSize:9}}/><YAxis tick={{fill:t.textMuted,fontSize:9}} tickFormatter={N}/><Tooltip content={<CT t={t}/>}/><Bar dataKey="v" name="Units" fill={t.orange} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Cd></Sec>
-      <Sec title="Storage Fee Trend" icon="💰" t={t}><Cd t={t} style={{position:"relative"}}>{feeChg!==0&&<div style={{position:"absolute",top:8,right:12,background:feeChg>10?t.redBg:feeChg<-5?t.greenBg:t.orangeBg,color:feeChg>10?t.red:feeChg<-5?t.green:t.orange,padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,zIndex:1}}>{feeChg>0?"+":""}{feeChg.toFixed(0)}% vs 90d ago</div>}<ResponsiveContainer width="100%" height={220}><ComposedChart data={feeTrend}><defs><linearGradient id="sfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={t.red} stopOpacity={.15}/><stop offset="100%" stopColor={t.red} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="d" tick={{fill:t.textMuted,fontSize:9}}/><YAxis tick={{fill:t.textMuted,fontSize:9}} tickFormatter={v=>"$"+v.toLocaleString()}/><Tooltip content={<CT t={t}/>}/><Area type="monotone" dataKey="v" name="Storage Fee" stroke={t.red} fill="url(#sfg)" strokeWidth={2}/></ComposedChart></ResponsiveContainer></Cd></Sec>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr",gap:14,marginTop:14}}>
       <Sec title="FBA Stock by Shop" icon="📦" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={Math.max(220,invShop.length*32)}><BarChart data={[...invShop].sort((a,b)=>b.fba-a.fba)} layout="vertical" margin={{left:10,right:30}} barSize={14} barCategoryGap="20%"><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis type="number" tick={{fill:t.textMuted,fontSize:9}} tickFormatter={N}/><YAxis type="category" dataKey="s" tick={{fill:t.textSec,fontSize:10}} width={90}/><Tooltip content={<CT t={t}/>}/><Bar dataKey="fba" name="FBA Stock" fill={t.primary} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Cd></Sec>
     </div>
     <div style={{marginTop:14}}><Alerts t={t} alerts={genInvAlerts(invShop,invData)}/></div>
@@ -295,7 +289,6 @@ export default function App(){
   const[invData,setInvData]=useState({});
   const[invShop,setInvShop]=useState([]);
   const[invTrend,setInvTrend]=useState([]);
-  const[invFeeTrend,setInvFeeTrend]=useState([]);
   const[planKpiState,setPlanKpiState]=useState({gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}});
   const[monthPlanState,setMonthPlanState]=useState([]);
   const[asinPlanBkState,setAsinPlanBkState]=useState([]);
@@ -351,7 +344,6 @@ export default function App(){
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
           api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
           api("inventory/stock-trend",{store}).then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))).catch(()=>{});
-          api("inventory/storage-trend",{store}).then(d=>setInvFeeTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseFloat(r.fee)||0}}))).catch(()=>{});
         }
       }catch(e){console.error("INIT ERROR:",e)}
       setDbConnecting(false);
@@ -405,7 +397,6 @@ export default function App(){
       api("inventory/snapshot",{store:_st}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
       api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
       api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
-      api("inventory/storage-trend",{store:_st}).then(d=>{if(!cancelled)setInvFeeTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseFloat(r.fee)||0}}))}).catch(()=>{});
     }
     if(!cancelled)setLoading(false);})();
     return()=>{cancelled=true};
@@ -532,7 +523,7 @@ export default function App(){
       <div style={{flex:1,overflow:"auto",padding:mob?12:20}}>
         {filterError&&<div style={{padding:"10px 16px",marginBottom:12,background:"#FEF3CD",border:"1px solid #F0D060",borderRadius:8,fontSize:11,color:"#856404"}}>⚠️ Filter issue: {filterError} — <a href={window.location.origin+"/api/debug/filters"} target="_blank" rel="noopener" style={{color:"#0066CC",textDecoration:"underline"}}>View debug info</a></div>}
         {pg==="exec"&&<ExecPage t={t} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={em} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob}/>}
-        {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend} invFeeTrend={invFeeTrend}/>}
+        {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend}/>}
         {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF}/>}
         {pg==="prod"&&<ProdPage t={t} fAsin={fAsin} fDaily={fDaily}/>}
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
