@@ -462,7 +462,6 @@ export default function App(){
           const mData={};
           allMonths.forEach(mn=>{
             const pm=pd.months?.[mn]||{};const am=ad.months?.[mn]||{};
-            // am.cr is ratio from server (e.g. 0.05), pm.cr is % from plan table (e.g. 5)
             const planCrM=pm.un&&pm.se?Math.round(pm.un/pm.se*10000)/100:(pm.cr||0);
             const planCtM=pm.se&&pm.im?Math.round(pm.se/pm.im*10000)/100:(pm.ct||0);
             mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:am.im||0,ip:pm.im||0,cra:Math.round((am.cr||0)*10000)/100,crp:planCrM,cta:Math.round((am.ct||0)*10000)/100,ctp:planCtM};
@@ -504,7 +503,7 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:8}}>{mob&&<button onClick={()=>setMobileFilters(!mobileFilters)} style={{background:t.primaryLight,border:"1px solid "+t.primary+"33",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:t.primary,fontWeight:700}}>☰</button>}<span style={{fontSize:mob?14:16,fontWeight:800,color:t.text}}>{cn?.i} {cn?.l}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
-            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v4.0</span>
+            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v4.2</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:t.textSec}}>{isDark?"☀":"🌙"}</button>
           </div>
         </div>
