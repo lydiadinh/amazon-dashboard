@@ -25,11 +25,11 @@ const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec
 const TIPS={sales:"Total revenue from all sales",units:"Total units sold",refunds:"Refunded orders",advCost:"Total ad spend (PPC)",shippingCost:"FBA shipping fees",refundCost:"Cost of processing refunds",amazonFees:"Referral + FBA fees",cogs:"Cost of Goods Sold",netProfit:"Revenue − All Costs",estPayout:"Estimated Amazon payout",realAcos:"Ad Spend / Sales × 100%",pctRefunds:"Refunds / Orders × 100%",margin:"Net Profit / Revenue × 100%",sessions:"Product page views",gp:"SUM(grossProfit) from seller_board_sales",cr:"Orders / Sessions × 100%",ctr:"Clicks / Impressions × 100%",sellThrough:"Units Sold / (Sold + Ending Inventory)",doh:"Current Stock / Avg Daily Sales"};
 
 /* ═══════════ BIDIRECTIONAL FILTER HOOK ═══════════ */
-function useBidirectionalFilters(store,seller,brand,asinF,masterList){
+function useBidirectionalFilters(store,seller,asinF,masterList){
   return useMemo(()=>{
-    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='brand'&&brand!=='All')d=d.filter(x=>x.b===brand);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
-    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),brands:[...new Set(ex('brand').map(x=>x.b))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
-  },[store,seller,brand,asinF,masterList]);
+    const ex=excl=>{let d=masterList;if(excl!=='store'&&store!=='All')d=d.filter(x=>x.st===store);if(excl!=='seller'&&seller!=='All')d=d.filter(x=>x.sl===seller);if(excl!=='asin'&&asinF!=='All')d=d.filter(x=>x.a===asinF);return d};
+    return{stores:[...new Set(ex('store').map(x=>x.st))].filter(Boolean).sort(),sellers:[...new Set(ex('seller').map(x=>x.sl))].filter(Boolean).sort(),asins:[...new Set(ex('asin').map(x=>x.a))].filter(Boolean).sort()};
+  },[store,seller,asinF,masterList]);
 }
 
 /* ═══════════ RESPONSIVE HOOK ═══════════ */
@@ -50,14 +50,22 @@ function PeriodBtns({onSelect,active,t,refDate}){
 }
 function ClearBtn({onClick,t}){return<button onClick={onClick} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+t.red,fontSize:10,cursor:"pointer",fontWeight:600,background:"transparent",color:t.red,whiteSpace:"nowrap"}}>✕ Clear</button>}
 const Sel=({value,onChange,options,label,t,renderLabel})=><select value={value} onChange={e=>onChange(e.target.value)} style={{background:t.card,color:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:500,cursor:"pointer"}}><option value="All">{label}</option>{options.map(o=><option key={o} value={o}>{renderLabel?renderLabel(o):o}</option>)}</select>;
+function AsinSel({value,onChange,options,label,t}){
+  const[open,setOpen]=useState(false);const[q,setQ]=useState("");const ref=useRef(null);
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
+  const filtered=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
+  return<div ref={ref} style={{position:"relative",display:"inline-block"}}><button onClick={()=>{setOpen(!open);setQ("")}} style={{background:t.card,color:value==="All"?t.textMuted:t.text,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:value==="All"?500:700,cursor:"pointer",minWidth:100,textAlign:"left"}}>{value==="All"?label:value} ▾</button>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:999,background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,boxShadow:"0 4px 16px "+t.shadow,minWidth:180,maxHeight:280,display:"flex",flexDirection:"column"}}><div style={{padding:4,borderBottom:"1px solid "+t.divider}}><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ASIN..." autoFocus style={{width:"100%",padding:"5px 8px",border:"1px solid "+t.inputBorder,borderRadius:5,fontSize:11,background:t.card,color:t.text,outline:"none",boxSizing:"border-box"}}/></div><div style={{overflowY:"auto",flex:1}}><div onClick={()=>{onChange("All");setOpen(false)}} style={{padding:"6px 10px",fontSize:11,cursor:"pointer",fontWeight:value==="All"?700:400,color:value==="All"?t.primary:t.text,background:value==="All"?t.primaryLight:"transparent"}}>{label}</div>{filtered.map(o=><div key={o} onClick={()=>{onChange(o);setOpen(false)}} style={{padding:"6px 10px",fontSize:10,fontFamily:"monospace",cursor:"pointer",fontWeight:value===o?700:400,color:value===o?t.primary:t.text,background:value===o?t.primaryLight:"transparent"}}>{o}</div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:10,color:t.textMuted}}>No results</div>}</div></div>}
+  </div>;
+}
 
 function KpiCard({title,value,change,icon,t,tip}){return<div style={{background:t.card,borderRadius:12,padding:"16px 18px",border:"1px solid "+t.cardBorder}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px "+t.shadow} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,textTransform:"uppercase",letterSpacing:.8,fontWeight:700,marginBottom:8}}>{title}{tip&&<Tip text={tip} t={t}/>}</div><div style={{fontSize:20,fontWeight:700,color:t.text,letterSpacing:-.3}}>{value}</div>{change!==undefined&&change!==null&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:6}}><span style={{fontSize:11,fontWeight:600,color:change>=0?t.green:t.red,background:change>=0?t.greenBg:t.redBg,padding:"2px 8px",borderRadius:10}}>{change>=0?"↑":"↓"} {Math.abs(change).toFixed(1)}%</span><span style={{fontSize:9,color:t.textMuted}}>vs prev</span></div>}</div><div style={{width:34,height:34,borderRadius:9,background:t.kpiIcon,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{icon}</div></div></div>}
 
-function PlanKpi({title,actual,plan,t,highlight,tip}){const isN=typeof actual==="number"&&typeof plan==="number";const gap=isN?actual-plan:null;const gc=gap!=null?(gap>=0?t.green:t.red):t.textMuted;return<div style={{background:highlight?t.primaryLight:t.card,borderRadius:12,padding:"16px 18px",border:highlight?"2px solid "+t.primary:"1px solid "+t.cardBorder}}><div style={{fontSize:10,color:highlight?t.primary:t.textMuted,textTransform:"uppercase",letterSpacing:.8,fontWeight:700,marginBottom:10}}>{highlight?"⭐ ":""}{title}{tip&&<Tip text={tip} t={t}/>}</div><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}><span style={{fontSize:11,color:t.textMuted}}>Actual</span><span style={{fontSize:highlight?22:18,fontWeight:700,color:highlight?t.primary:t.text}}>{isN?$(actual):actual}</span></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}><span style={{fontSize:11,color:t.textMuted}}>Plan</span><span style={{fontSize:12,fontWeight:600,color:t.textSec}}>{isN?$(plan):plan}</span></div><div style={{marginTop:10,padding:"7px 10px",borderRadius:7,background:t.primaryGhost,display:"flex",justifyContent:"space-between"}}><span style={{fontSize:10,color:t.textMuted}}>Gap</span><span style={{fontSize:12,fontWeight:700,color:gc}}>{gap!=null?$(gap):"—"}</span></div></div>}
+function PlanKpi({title,actual,plan,t,highlight,tip,fmt}){const isN=typeof actual==="number"&&typeof plan==="number";const gap=isN?actual-plan:null;const gc=gap!=null?(gap>=0?t.green:t.red):t.textMuted;const F=fmt||$;return<div style={{background:highlight?t.primaryLight:t.card,borderRadius:12,padding:"16px 18px",border:highlight?"2px solid "+t.primary:"1px solid "+t.cardBorder}}><div style={{fontSize:10,color:highlight?t.primary:t.textMuted,textTransform:"uppercase",letterSpacing:.8,fontWeight:700,marginBottom:10}}>{highlight?"⭐ ":""}{title}{tip&&<Tip text={tip} t={t}/>}</div><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}><span style={{fontSize:11,color:t.textMuted}}>Actual</span><span style={{fontSize:highlight?22:18,fontWeight:700,color:highlight?t.primary:t.text}}>{isN?F(actual):actual}</span></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}><span style={{fontSize:11,color:t.textMuted}}>Plan</span><span style={{fontSize:12,fontWeight:600,color:t.textSec}}>{isN?F(plan):plan}</span></div><div style={{marginTop:10,padding:"7px 10px",borderRadius:7,background:t.primaryGhost,display:"flex",justifyContent:"space-between"}}><span style={{fontSize:10,color:t.textMuted}}>Gap</span><span style={{fontSize:12,fontWeight:700,color:gc}}>{gap!=null?F(gap):"—"}</span></div></div>}
 
 const Sec=({title,icon,t,action,children})=><div style={{marginTop:20}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:14}}>{icon}</span><span style={{fontSize:13,fontWeight:700,color:t.text}}>{title}</span></div>{action}</div>{children}</div>;
 const Cd=({children,t,style:s})=><div style={{background:t.card,borderRadius:12,padding:16,border:"1px solid "+t.cardBorder,...s}}>{children}</div>;
-const CT=({active,payload,label,t:th})=>{if(!active||!payload?.length)return null;const t=th||TH.light;return<div style={{background:t.card,border:"1px solid "+t.cardBorder,borderRadius:8,padding:"8px 12px",boxShadow:"0 4px 16px "+t.shadow}}><div style={{fontSize:10,color:t.textMuted,marginBottom:4,fontWeight:600}}>{label}</div>{payload.filter(p=>p.value!=null).map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginTop:2}}><div style={{width:7,height:7,borderRadius:4,background:p.color,flexShrink:0}}/><span style={{color:t.textSec}}>{p.name}:</span><span style={{fontWeight:700,color:p.color}}>{typeof p.value==="number"&&Math.abs(p.value)>999?$s(p.value):p.value?.toLocaleString?.()??p.value}</span></div>)}</div>};
+const CT=({active,payload,label,t:th})=>{if(!active||!payload?.length)return null;const t=th||TH.light;return<div style={{background:t.card,border:"1px solid "+t.cardBorder,borderRadius:8,padding:"8px 12px",boxShadow:"0 4px 16px "+t.shadow}}><div style={{fontSize:10,color:t.textMuted,marginBottom:4,fontWeight:600}}>{label}</div>{payload.filter(p=>p.value!=null).map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginTop:2}}><div style={{width:7,height:7,borderRadius:4,background:p.color,flexShrink:0}}/><span style={{color:t.textSec}}>{p.name}:</span><span style={{fontWeight:700,color:p.color}}>{typeof p.value==="number"?(Math.abs(p.value)>=1?p.value.toLocaleString("en-US",{maximumFractionDigits:2}):p.value.toFixed(4)):p.value}</span></div>)}</div>};
 
 function APG({actual,plan,t,isMoney=true,suffix="",reverse=false}){if(actual==null)return<div><div style={{fontSize:13,fontWeight:700,color:t.textMuted}}>—</div><div style={{fontSize:10,color:t.textMuted}}>Plan: {isMoney?$(plan):N(plan)+suffix}</div></div>;const gap=typeof actual==="number"?actual-plan:null;const gc=gap!=null?(reverse?(gap<=0?t.green:t.red):(gap>=0?t.green:t.red)):t.textMuted;const fA=isMoney?$(actual):(typeof actual==="number"?actual.toLocaleString():actual)+suffix;const fP=isMoney?$(plan):(typeof plan==="number"?plan.toLocaleString():plan)+suffix;const fG=gap!=null?(isMoney?$(gap):(gap>=0?"+":"")+gap.toLocaleString()+suffix):"—";return<div style={{lineHeight:1.5}}><div style={{fontSize:13,fontWeight:700,color:t.text}}>{fA}</div><div style={{fontSize:10,color:t.textMuted}}>Plan: {fP}</div><div style={{fontSize:10,fontWeight:600,color:gc}}>{fG}</div></div>}
 
@@ -84,7 +92,7 @@ function genAlerts(fAsin,t,extra){
 function genShopAlerts(shops,t){const alerts=[];const poor=shops.filter(s=>s.m<0);const best=[...shops].sort((a,b)=>b.n-a.n)[0];if(poor.length)alerts.push({s:"c",t:`${poor.length} shops with negative margin: ${poor.map(s=>s.s).join(", ")}`});if(best)alerts.push({s:"i",t:`Top shop: ${best.s} with ${$(best.n)} net profit (${best.m.toFixed(1)}% margin)`});return alerts.length?alerts:[{s:"i",t:"All shops performing within normal range."}];}
 function genSellerAlerts(sellers,t){const alerts=[];const neg=sellers.filter(s=>s.m<3);const best=[...sellers].sort((a,b)=>b.n-a.n)[0];if(neg.length)alerts.push({s:"w",t:`${neg.length} sellers with margin <3%: ${neg.map(s=>s.sl).join(", ")}`});if(best)alerts.push({s:"i",t:`Top seller: ${best.sl} with ${$(best.n)} net profit (${best.m.toFixed(1)}% margin)`});return alerts.length?alerts:[{s:"i",t:"All sellers performing well."}];}
 function genOpsAlerts(fDaily,t){const alerts=[];const negDays=fDaily.filter(d=>d.netProfit<0);if(negDays.length>5)alerts.push({s:"w",t:`${negDays.length} days with negative NP in selected period`});const maxD=[...fDaily].sort((a,b)=>b.revenue-a.revenue)[0];if(maxD)alerts.push({s:"i",t:`Peak revenue day: ${maxD.label} at ${$(maxD.revenue)}`});return alerts.length?alerts:[{s:"i",t:"Daily operations within normal range."}];}
-function genInvAlerts(shops,invData){const a=[];const tFba=invData?.fbaStock||shops.reduce((s,x)=>s+x.fba,0);const crit=invData?.criticalSkus||shops.reduce((s,x)=>s+x.crit,0);const lowSt=shops.filter(s=>s.st<2);const hiDoh=shops.filter(s=>s.doh>50);a.push({s:"i",t:`Total FBA stock: ${N(tFba)} units across ${shops.length} shops`});if(crit>100)a.push({s:"c",t:`${crit} critical SKUs need restocking`});else if(crit>0)a.push({s:"w",t:`${crit} critical SKUs — monitor closely`});if(lowSt.length)a.push({s:"w",t:`${lowSt.length} shops with sell-through <2%: ${lowSt.map(s=>s.s).join(", ")}`});if(hiDoh.length)a.push({s:"i",t:`${hiDoh.length} shops with >50 days of health: ${hiDoh.map(s=>s.s).join(", ")} — consider reducing orders`});return a;}
+function genInvAlerts(shops){const a=[];const tFba=shops.reduce((s,x)=>s+x.fba,0);const crit=shops.reduce((s,x)=>s+x.crit,0);const lowSt=shops.filter(s=>s.st<2);const hiDoh=shops.filter(s=>s.doh>50);a.push({s:"i",t:`Total FBA stock: ${N(tFba)} units across ${shops.length} shops`});if(crit>100)a.push({s:"c",t:`${crit} critical SKUs need restocking`});else if(crit>0)a.push({s:"w",t:`${crit} critical SKUs — monitor closely`});if(lowSt.length)a.push({s:"w",t:`${lowSt.length} shops with sell-through <2%: ${lowSt.map(s=>s.s).join(", ")}`});if(hiDoh.length)a.push({s:"i",t:`${hiDoh.length} shops with >50 days of health: ${hiDoh.map(s=>s.s).join(", ")} — consider reducing orders`});return a;}
 
 /* ═══════════ EXECUTIVE ═══════════ */
 function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
@@ -114,12 +122,18 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
       <Cd t={t} style={{padding:14}}><div style={{fontSize:11,fontWeight:700,color:t.textMuted,textTransform:"uppercase",marginBottom:10}}>📊 Detailed Metrics</div><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><tbody>{[["Sales",$2(em.sales),TIPS.sales],["Units",N(em.units),TIPS.units],["Refunds",N(em.refunds),TIPS.refunds],["Ad Cost",$2(em.advCost),TIPS.advCost],["Shipping",$2(em.shippingCost),TIPS.shippingCost],["Refund Cost",$2(em.refundCost),TIPS.refundCost],["Amazon Fees",$2(em.amazonFees),TIPS.amazonFees],["COGS",$2(em.cogs),TIPS.cogs],["Net Profit",$2(em.netProfit),TIPS.netProfit],["Payout",$2(em.estPayout),TIPS.estPayout],["ACOS",(em.realAcos||0).toFixed(2)+"%",TIPS.realAcos],["% Refunds",(em.pctRefunds||0).toFixed(2)+"%",TIPS.pctRefunds],["Margin",(em.margin||0).toFixed(2)+"%",TIPS.margin],["Sessions",N(Math.round(em.sessions||0)),TIPS.sessions]].map(([l,v,tip],i)=><tr key={i} style={{borderBottom:"1px solid "+t.divider}}><td style={{padding:"6px 8px",color:t.textSec,fontWeight:500}}>{l}<Tip text={tip} t={t}/></td><td style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:t.text}}>{v}</td></tr>)}</tbody></table></Cd>
       <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:10}}><KpiCard title="Revenue" value={$(em.sales)} change={ch("sales")} icon="💰" t={t} tip={TIPS.sales}/><KpiCard title="Net Profit" value={$(em.netProfit)} change={ch("netProfit")} icon="📈" t={t} tip={TIPS.netProfit}/><KpiCard title="Margin" value={(em.margin||0).toFixed(2)+"%"} change={prevEm?em.margin-prevEm.margin:undefined} icon="🎯" t={t} tip={TIPS.margin}/><KpiCard title="Orders" value={N(em.orders)} change={ch("orders")} icon="🛒" t={t}/><KpiCard title="Sessions" value={N(Math.round(em.sessions||0))} change={ch("sessions")} icon="👁" t={t} tip={TIPS.sessions}/><KpiCard title="Ad Spend" value={$2(Math.abs(em.advCost||0))} change={ch("advCost")} icon="⚡" t={t} tip={TIPS.advCost}/></div>
     </div>
-    <Sec title="Daily Trend" icon="📊" t={t}><TrendChart data={fDaily} t={t} h={260}/></Sec>
+    <Sec title="Daily Trend" icon="📊" t={t}><TrendChart data={fDaily} t={t} h={260} keys={[{dk:"revenue",n:"Revenue",c:t.primary,g:"url(#gRv)"},{dk:"netProfit",n:"Net Profit",c:t.green,g:"url(#gNp)"},{dk:"units",n:"Units Sold",c:t.orange}]}/></Sec>
     <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1.4fr .6fr",gap:14,marginTop:16}}>
-      <Sec title="Revenue & NP by Shop" icon="🏪" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={Math.max(200,fShop.length*35)}><BarChart data={fShop} layout="vertical" margin={{left:90}} barSize={14}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis type="number" tick={{fill:t.textMuted,fontSize:10}} tickFormatter={v=>$s(v)}/><YAxis type="category" dataKey="s" tick={{fill:t.textSec,fontSize:10}} width={85}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="r" name="Revenue" fill={t.primary} radius={[0,4,4,0]}/><Bar dataKey="n" name="Net Profit" radius={[0,4,4,0]}>{fShop.map((e,i)=><Cell key={i} fill={e.n>=0?t.green:t.red}/>)}</Bar></BarChart></ResponsiveContainer></Cd></Sec>
-      <Sec title="Revenue Share" icon="🍩" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={200}><PieChart><Pie data={donut} innerRadius={55} outerRadius={80} dataKey="value" nameKey="name" cx="50%" cy="50%" paddingAngle={2} stroke="none">{donut.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer><div style={{display:"flex",flexWrap:"wrap",gap:5,justifyContent:"center"}}>{donut.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:3,fontSize:9,color:t.textSec}}><div style={{width:7,height:7,borderRadius:2,background:d.fill}}/>{d.name}</div>)}</div></Cd></Sec>
+      <Sec title="Revenue & NP by Shop" icon="🏪" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={Math.max(200,fShop.length*40)}><BarChart data={fShop} layout="vertical" margin={{left:100,right:20}} barSize={12} barGap={2}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis type="number" tick={{fill:t.textMuted,fontSize:10}} tickFormatter={v=>$s(v)}/><YAxis type="category" dataKey="s" tick={{fill:t.textSec,fontSize:10}} width={95}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="r" name="Revenue" fill={t.primary} radius={[0,4,4,0]}/><Bar dataKey="n" name="Net Profit" fill={t.green} radius={[0,4,4,0]}>{fShop.map((e,i)=><Cell key={i} fill={e.n>=0?t.green:t.red}/>)}</Bar></BarChart></ResponsiveContainer></Cd></Sec>
+      <Sec title="Revenue Share" icon="🍩" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={200}><PieChart><Pie data={donut} innerRadius={55} outerRadius={80} dataKey="value" nameKey="name" cx="50%" cy="50%" paddingAngle={2} stroke="none">{donut.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Pie><Tooltip formatter={(v)=>"$"+v.toLocaleString()}/></PieChart></ResponsiveContainer><div style={{marginTop:8}}>{donut.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,fontSize:10,color:t.textSec,padding:"3px 6px",borderBottom:i<donut.length-1?"1px solid "+t.divider:"none"}}><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:2,background:d.fill,flexShrink:0}}/><span>{d.name}</span></div><div style={{display:"flex",gap:10}}><span style={{fontWeight:600}}>${d.value.toLocaleString()}</span><span style={{color:t.textMuted}}>{tR>0?(d.value/tR*100).toFixed(1):0}%</span></div></div>)}</div></Cd></Sec>
     </div>
-    <Sec title="ASIN Performance" icon="📋" t={t}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{["ASIN","Brand","Revenue","Net Profit","Margin%","Units","CR%","ACoS","ROAS"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i>=2?"right":"left",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead><tbody>{fAsin.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"8px 12px",fontFamily:"monospace",fontSize:11,fontWeight:600,color:t.textSec,borderBottom:"1px solid "+t.divider}}>{r.a}</td><td style={{padding:"8px 12px",fontWeight:700,color:t.text,borderBottom:"1px solid "+t.divider}}>{r.b}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(r.r)}</td><td style={{padding:"8px 12px",textAlign:"right",fontWeight:700,color:r.n>=0?t.green:t.red,borderBottom:"1px solid "+t.divider}}>{$(r.n)}</td><td style={{padding:"8px 12px",textAlign:"right",color:mC(r.m,t),borderBottom:"1px solid "+t.divider}}>{r.m.toFixed(1)}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{N(r.u)}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.cr}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ac<30?t.green:r.ac<50?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ac}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ro>3?t.green:r.ro>2?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ro.toFixed(2)}</td></tr>)}</tbody></table><div style={{padding:"6px 12px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fAsin.length} ASINs</div></div></Sec>
+    <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(4,1fr)",gap:12,marginTop:14,marginBottom:14}}>
+      <KpiCard title="Gross Profit" value={$(em.grossProfit)} change={ch("grossProfit")} icon="⭐" t={t} tip={TIPS.gp}/>
+      <KpiCard title="ACOS" value={(em.realAcos||0).toFixed(2)+"%" } icon="📊" t={t} tip={TIPS.realAcos}/>
+      <KpiCard title="Avg Order Value" value={em.orders>0?$2(em.sales/em.orders):"—"} icon="🛍" t={t}/>
+      <KpiCard title="Units per Order" value={em.orders>0?(em.units/em.orders).toFixed(1):"—"} icon="📦" t={t}/>
+    </div>
+    <Sec title="ASIN Performance" icon="📋" t={t}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{["ASIN","Shop","Revenue","Net Profit","Margin%","Units","CR%","ACoS","ROAS"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i>=2?"right":"left",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead><tbody>{fAsin.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"8px 12px",fontFamily:"monospace",fontSize:11,fontWeight:600,color:t.textSec,borderBottom:"1px solid "+t.divider}}>{r.a}</td><td style={{padding:"8px 12px",fontWeight:700,color:t.text,borderBottom:"1px solid "+t.divider}}>{r.b}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(r.r)}</td><td style={{padding:"8px 12px",textAlign:"right",fontWeight:700,color:r.n>=0?t.green:t.red,borderBottom:"1px solid "+t.divider}}>{$(r.n)}</td><td style={{padding:"8px 12px",textAlign:"right",color:mC(r.m,t),borderBottom:"1px solid "+t.divider}}>{r.m.toFixed(1)}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{N(r.u)}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.cr.toFixed(2)}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ac<30?t.green:r.ac<50?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ac.toFixed(2)}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ro>3?t.green:r.ro>2?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ro.toFixed(2)}</td></tr>)}</tbody></table><div style={{padding:"6px 12px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fAsin.length} ASINs</div></div></Sec>
     <div style={{marginTop:14}}><Alerts t={t} alerts={genAlerts([...fAsin],t,[{s:"i",t:`Showing ${fDaily.length} days (${fDaily[0]?.label||""} — ${fDaily[fDaily.length-1]?.label||""})`}])}/></div>
   </div>;
 }
@@ -128,7 +142,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob}){
 function InvPage({t,mob,invData,invShop,invTrend}){
   const d=invData||{};
   return<div>
-    <Cd t={t} style={{padding:"10px 16px",marginBottom:14,borderLeft:"3px solid "+t.blue}}><div style={{fontSize:11,color:t.textSec}}>💡 Latest inventory snapshot. Use Shop filter above to filter by store.</div></Cd>
+    <Cd t={t} style={{padding:"10px 16px",marginBottom:14,borderLeft:"3px solid "+t.blue}}><div style={{fontSize:11,color:t.textSec}}>💡 Latest inventory snapshot. No time filter needed.</div></Cd>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(148px,1fr))",gap:12,marginBottom:16}}>
       <KpiCard title="FBA Stock" value={N(d.fbaStock||0)} icon="📦" t={t}/><KpiCard title="Available" value={N(d.availableInv||0)} icon="🗃" t={t}/><KpiCard title="Reserved" value={N(d.reserved||0)} icon="🔒" t={t}/><KpiCard title="Critical SKUs" value={N(d.criticalSkus||0)} icon="🚨" t={t}/><KpiCard title="Inbound" value={N(d.inbound||0)} icon="📥" t={t}/><KpiCard title="Avg Days Supply" value={Math.round(d.avgDaysOfSupply||0)} icon="📈" t={t} tip={TIPS.doh}/>
     </div>
@@ -140,13 +154,13 @@ function InvPage({t,mob,invData,invShop,invTrend}){
       <Sec title="Inventory Aging" icon="📊" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={220}><BarChart data={[{name:"0-90d",v:d.age0_90||0},{name:"91-180d",v:d.age91_180||0},{name:"181-270d",v:d.age181_270||0},{name:"271-365d",v:d.age271_365||0},{name:"365d+",v:d.age365plus||0}]}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="name" tick={{fill:t.textMuted,fontSize:9}}/><YAxis tick={{fill:t.textMuted,fontSize:9}} tickFormatter={N}/><Tooltip content={<CT t={t}/>}/><Bar dataKey="v" name="Units" fill={t.orange} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Cd></Sec>
       <Sec title="FBA Stock by Shop" icon="📦" t={t}><Cd t={t}><ResponsiveContainer width="100%" height={220}><BarChart data={[...invShop].sort((a,b)=>b.fba-a.fba)} layout="vertical" margin={{left:85}}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis type="number" tick={{fill:t.textMuted,fontSize:9}} tickFormatter={N}/><YAxis type="category" dataKey="s" tick={{fill:t.textSec,fontSize:9}} width={80}/><Tooltip content={<CT t={t}/>}/><Bar dataKey="fba" name="FBA Stock" fill={t.primary} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Cd></Sec>
     </div>
-    <div style={{marginTop:14}}><Alerts t={t} alerts={genInvAlerts(invShop,invData)}/></div>
+    <div style={{marginTop:14}}><Alerts t={t} alerts={genInvAlerts(invShop)}/></div>
   </div>;
 }
 
 /* ═══════════ ASIN PLAN ═══════════ */
-function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
-  const isF=(seller&&seller!=="All")||(brand&&brand!=="All")||(asinF&&asinF!=="All");
+function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF}){
+  const isF=(seller&&seller!=="All")||(store&&store!=="All")||(asinF&&asinF!=="All");
   const[trendMetric,setTrendMetric]=useState("gp");
   const[kpiMonth,setKpiMonth]=useState("All");
   const[tblMonth,setTblMonth]=useState("All");
@@ -161,7 +175,8 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
     const pk=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
     if(kpiMonth==="All")return pk;
     const mi=MS.indexOf(kpiMonth);const m=mpd[mi];if(!m)return pk;
-    return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:m.cra,p:m.crp},ct:{a:m.cta,p:m.ctp}};
+    // mpd stores CR/CTR as percentages, convert back to ratio for KPI display
+    return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},cr:{a:(m.cra||0)/100,p:(m.crp||0)/100},ct:{a:(m.cta||0)/100,p:(m.ctp||0)/100}};
   },[kpiMonth,planKpi,mpd]);
   // Filter ASIN Breakdown by selected month
   const fPlanBk=useMemo(()=>{
@@ -178,8 +193,8 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,brand,asinF}){
   return<div>
     {!hasData&&<div style={{padding:24,textAlign:"center",color:t.textMuted,fontSize:13,background:t.card,borderRadius:12,border:"1px solid "+t.cardBorder,marginBottom:16}}>📋 No plan data found for this year/filter combination. Try selecting a different year or adjusting filters.</div>}
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:11,color:t.textMuted,fontWeight:600}}>KPI Month:</span><Sel value={kpiMonth} onChange={setKpiMonth} options={MS} label="All Months" t={t}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?kpiData.cr.a+"%":null} plan={kpiData.cr.p+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?kpiData.ct.a+"%":null} plan={kpiData.ct.p+"%"} t={t}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:12}}><PlanKpi title="Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/><PlanKpi title="Revenue" actual={kpiData.rv.a} plan={kpiData.rv.p} t={t}/><PlanKpi title="Ads Spend" actual={kpiData.ad.a} plan={kpiData.ad.p} t={t}/><PlanKpi title="Units" actual={kpiData.un.a} plan={kpiData.un.p} t={t} fmt={N}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:16}}><PlanKpi title="Sessions" actual={kpiData.se.a} plan={kpiData.se.p} t={t} fmt={N}/><PlanKpi title="Impressions" actual={kpiData.im.a} plan={kpiData.im.p} t={t} fmt={N}/><PlanKpi title="Conv. Rate" actual={kpiData.cr.a!=null?(Math.round(kpiData.cr.a*10000)/100)+"%":null} plan={(Math.round(kpiData.cr.p*10000)/100)+"%"} t={t}/><PlanKpi title="CTR" actual={kpiData.ct.a!=null?(Math.round(kpiData.ct.a*10000)/100)+"%":null} plan={(Math.round(kpiData.ct.p*10000)/100)+"%"} t={t}/></div>
     <Sec title="Trend — Actual vs Plan" icon="📊" t={t} action={<select value={trendMetric} onChange={e=>setTrendMetric(e.target.value)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:t.primary,cursor:"pointer"}}>{metrics.map(m=><option key={m.k} value={m.k}>{m.l}</option>)}</select>}><Cd t={t}><ResponsiveContainer width="100%" height={260}><ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="m" tick={{fill:t.textSec,fontSize:10}}/><YAxis tick={{fill:t.textMuted,fontSize:10}} tickFormatter={v=>isCur?$s(v):isPct?v+"%":N(v)}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Actual" fill={t.primary} radius={[4,4,0,0]}/><Line type="monotone" dataKey="Plan" stroke={t.orange} strokeWidth={2} strokeDasharray="5 3" dot={{r:3,fill:t.orange}}/></ComposedChart></ResponsiveContainer></Cd></Sec>
     <Sec title="Monthly Breakdown — All Metrics (A / P / Gap)" icon="📋" t={t} action={isF&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⚠️ Filtered by entity</span>}><div style={{overflowX:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr>{THD.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i===0?60:100}}>{h}</th>)}</tr></thead><tbody>{mpd.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.m}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider}}>Each cell: <strong style={{color:t.text}}>Actual</strong> / <span>Plan</span> / <span style={{color:t.green}}>Gap</span></div></div></Sec>
     <Sec title="⭐ ASIN Breakdown" icon="📋" t={t} action={<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:t.textMuted}}>Month:</span><Sel value={tblMonth} onChange={setTblMonth} options={MS} label="All Months" t={t}/></div>}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{AHDL.map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<=1?"left":"right",color:h.includes("GP")?t.primary:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:h.includes("GP")?t.primaryLight:t.tableBg,whiteSpace:"nowrap",minWidth:i<=1?70:100}}>{h}</th>)}</tr></thead><tbody>{fPlanBk.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:10,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.br}</td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r.gp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa} plan={r.sp} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia} plan={r.ip} t={t} isMoney={false}/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra} plan={r.crp} t={t} isMoney={false} suffix="%"/></td><td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta} plan={r.ctp} t={t} isMoney={false} suffix="%"/></td></tr>)}</tbody></table><div style={{padding:"8px 14px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fPlanBk.length} ASINs · Ads: lower = better (reversed color)</div></div></Sec>
@@ -192,7 +207,7 @@ function ProdPage({t,fAsin,fDaily}){
   return<div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}><KpiCard title="Revenue" value={$(tR)} icon="💰" t={t}/><KpiCard title="Net Profit" value={$(tN)} icon="📈" t={t}/><KpiCard title="Margin" value={(tR?(tN/tR*100).toFixed(2):0)+"%"} icon="🎯" t={t}/><KpiCard title="Units" value={N(tU)} icon="📦" t={t}/></div>
     <Sec title="Revenue & NP Trend" icon="📈" t={t}><TrendChart data={fDaily} t={t}/></Sec>
-    <Sec title="ASIN Table" icon="📋" t={t}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{["ASIN","Brand","Seller","Revenue","Net Profit","Margin%","Units","CR%","ACoS","ROAS"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i>=3?"right":"left",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead><tbody>{fAsin.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"8px 12px",fontFamily:"monospace",fontSize:11,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"8px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.b}</td><td style={{padding:"8px 12px",borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.sl}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(r.r)}</td><td style={{padding:"8px 12px",textAlign:"right",fontWeight:700,color:r.n>=0?t.green:t.red,borderBottom:"1px solid "+t.divider}}>{$(r.n)}</td><td style={{padding:"8px 12px",textAlign:"right",color:mC(r.m,t),borderBottom:"1px solid "+t.divider}}>{r.m.toFixed(1)}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{N(r.u)}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.cr}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ac<30?t.green:r.ac<50?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ac}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.ro.toFixed(2)}</td></tr>)}</tbody></table><div style={{padding:"6px 12px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fAsin.length} ASINs</div></div></Sec>
+    <Sec title="ASIN Table" icon="📋" t={t}><div style={{overflowX:"auto",maxHeight:520,overflowY:"auto",borderRadius:10,border:"1px solid "+t.cardBorder,background:t.card}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead style={{position:"sticky",top:0,zIndex:2}}><tr>{["ASIN","Shop","Seller","Revenue","Net Profit","Margin%","Units","CR%","ACoS","ROAS"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i>=3?"right":"left",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead><tbody>{fAsin.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"8px 12px",fontFamily:"monospace",fontSize:11,borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.a}</td><td style={{padding:"8px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{r.b}</td><td style={{padding:"8px 12px",borderBottom:"1px solid "+t.divider,color:t.textSec}}>{r.sl}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(r.r)}</td><td style={{padding:"8px 12px",textAlign:"right",fontWeight:700,color:r.n>=0?t.green:t.red,borderBottom:"1px solid "+t.divider}}>{$(r.n)}</td><td style={{padding:"8px 12px",textAlign:"right",color:mC(r.m,t),borderBottom:"1px solid "+t.divider}}>{r.m.toFixed(1)}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{N(r.u)}</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.cr.toFixed(2)}%</td><td style={{padding:"8px 12px",textAlign:"right",color:r.ac<30?t.green:r.ac<50?t.orange:t.red,borderBottom:"1px solid "+t.divider}}>{r.ac.toFixed(2)}%</td><td style={{padding:"8px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{r.ro.toFixed(2)}</td></tr>)}</tbody></table><div style={{padding:"6px 12px",fontSize:10,color:t.textMuted,borderTop:"1px solid "+t.divider,position:"sticky",bottom:0,background:t.card}}>{fAsin.length} ASINs</div></div></Sec>
     <div style={{marginTop:14}}><Alerts t={t} alerts={genAlerts([...fAsin],t)}/></div>
   </div>;
 }
@@ -257,10 +272,10 @@ export default function App(){
   const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(defaultEnd);
   const[activePeriod,setActivePeriod]=useState(null);
   const[store,setStore]=useState("All");const[seller,setSeller]=useState("All");
-  const[brand,setBrand]=useState("All");const[asinF,setAsinF]=useState("All");
+  const[asinF,setAsinF]=useState("All");
   const[planYear,setPlanYear]=useState(String(new Date().getFullYear()));
   const planYearOpts=useMemo(()=>{const c=new Date().getFullYear();return[String(c-1),String(c),String(c+1)]},[]);
-  const clearDates=()=>{setSd(defaultStart);setEd(defaultEnd);setActivePeriod(null)};
+  const clearDates=()=>{if(dbRange?.defaultStart)setSd(dbRange.defaultStart);else setSd(defaultStart);setEd(defaultEnd);setActivePeriod(null)};
 
   // ═══════════ LIVE DATA STATE ═══════════
   const[em,setEm]=useState(EMPTY_EM);
@@ -278,10 +293,9 @@ export default function App(){
   const[masterList,setMasterList]=useState([]);
   const[loading,setLoading]=useState(false);
 
-  const opts=useBidirectionalFilters(store,seller,brand,asinF,masterList);
+  const opts=useBidirectionalFilters(store,seller,asinF,masterList);
   useEffect(()=>{if(store!=="All"&&opts.stores.length&&!opts.stores.includes(store))setStore("All")},[opts.stores]);
   useEffect(()=>{if(seller!=="All"&&opts.sellers.length&&!opts.sellers.includes(seller))setSeller("All")},[opts.sellers]);
-  useEffect(()=>{if(brand!=="All"&&opts.brands.length&&!opts.brands.includes(brand))setBrand("All")},[opts.brands]);
   useEffect(()=>{if(asinF!=="All"&&opts.asins.length&&!opts.asins.includes(asinF))setAsinF("All")},[opts.asins]);
 
   // ═══════════ INIT: Connect to backend ═══════════
@@ -301,10 +315,10 @@ export default function App(){
               if(f.asins){
                 f.asins.forEach(a=>{
                   const shops=a.shops&&a.shops.length?a.shops:shopNames.length?[shopNames[0]]:["Unknown"];
-                  shops.forEach(sh=>ml.push({a:a.asin||"",b:a.brand||a.store||"",st:sh,sl:a.seller||""}));
+                  shops.forEach(sh=>ml.push({a:a.asin||"",st:sh,sl:a.seller||""}));
                 });
               }
-              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",b:"",st:sh,sl:""});});
+              shopNames.forEach(sh=>{if(!ml.some(x=>x.st===sh))ml.push({a:"",st:sh,sl:""});});
               setMasterList(ml);
               console.log("masterList built:",ml.length,"entries. Sample:",ml.slice(0,3));
               if(ml.length===0)setFilterError("Filters API returned data but masterList is empty");
@@ -318,19 +332,11 @@ export default function App(){
           const dr=await api("date-range").catch(()=>null);
           if(dr){
             setDbRange(dr);
-            // Keep end=today, but start from data range so queries return results
-            if(dr.maxDate){
-              const dbMax=new Date(dr.maxDate+"T00:00:00");
-              const today=new Date(defaultEnd+"T00:00:00");
-              // If DB max date < our default start, adjust start to cover actual data
-              const defStart=new Date(defaultStart+"T00:00:00");
-              if(dbMax < defStart){
-                // Data doesn't reach our default range - use last 30d of actual data
-                const adjStart=new Date(dbMax); adjStart.setDate(adjStart.getDate()-29);
-                const s=adjStart.toISOString().slice(0,10);
-                console.log("Adjusted start to",s,"(DB max:",dr.maxDate,", default was:",defaultStart,")");
-                setSd(s < (dr.minDate||s) ? dr.minDate : s);
-              }
+            // End date = always today, start = 30 days ago (or dr.defaultStart)
+            if(dr.defaultStart){
+              console.log("Setting dates: start=",dr.defaultStart,"end=today (DB min:",dr.minDate,"max:",dr.maxDate,")");
+              setSd(dr.defaultStart);
+              // ed stays as today (defaultEnd)
             }
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
@@ -343,62 +349,69 @@ export default function App(){
   },[]);
 
   // ═══════════ FETCH DATA when filters/dates change ═══════════
+  // Debounced fetch: wait 400ms after last filter change before fetching
+  const [fetchTrigger,setFetchTrigger]=useState(0);
+  const fetchParamsRef=useRef({sd,ed,store,seller,asinF});
+  fetchParamsRef.current={sd,ed,store,seller,asinF};
   useEffect(()=>{
     if(!live||dbConnecting)return;
+    const timer=setTimeout(()=>setFetchTrigger(t=>t+1),400);
+    return()=>clearTimeout(timer);
+  },[sd,ed,store,seller,asinF,live,dbConnecting]);
+  useEffect(()=>{
+    if(!live||dbConnecting||fetchTrigger===0)return;
     let cancelled=false;
-    const p={start:sd,end:ed,store,seller,brand,asin:asinF};
+    const{sd:_sd,ed:_ed,store:_st,seller:_sl,asinF:_af}=fetchParamsRef.current;
+    const p={start:_sd,end:_ed,store:_st,seller:_sl,asin:_af};
     setLoading(true);setFilterError(null);
-    (async()=>{
-      try{
-        console.log("=== DATA FETCH START ===");
-        console.log("Params:",JSON.stringify(p));
-        const summary=await api("exec/summary",p).catch(e=>{console.error("exec/summary ERROR:",e.message);return EMPTY_EM;});
-        console.log("exec/summary:",typeof summary,summary?.sales!==undefined?"sales="+summary.sales:"NO SALES FIELD",JSON.stringify(summary).slice(0,300));
-        if(!cancelled)setEm(summary);
-        // Previous period
-        const days=Math.max(1,Math.round((new Date(ed)-new Date(sd))/86400000)+1);
-        const pe=new Date(new Date(sd+"T00:00:00").getTime()-86400000);
-        const ps=new Date(pe.getTime()-(days-1)*86400000);
-        const prev=await api("exec/summary",{...p,start:ps.toISOString().slice(0,10),end:pe.toISOString().slice(0,10)}).catch(()=>null);
-        if(!cancelled)setPrevEm(prev&&prev.sales?prev:null);
-        // Daily
-        const daily=await api("exec/daily",p).catch(e=>{console.error("exec/daily ERROR:",e.message);return[];});
-        console.log("exec/daily:",Array.isArray(daily)?daily.length+" rows":"NOT ARRAY",JSON.stringify(daily).slice(0,200));
-        if(!cancelled)setFDaily((daily||[]).map(r=>{const dt=new Date(r.date);return{date:r.date,label:MS[dt.getMonth()]+" "+dt.getDate(),revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
-        // ASINs
-        const asins=await api("product/asins",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("product/asins ERROR:",e.message);return[];});
-        console.log("product/asins:",Array.isArray(asins)?asins.length+" rows":"NOT ARRAY");
-        if(!cancelled)setFAsin((asins||[]).map(r=>({a:r.asin,b:r.brand||"",st:r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:parseFloat(r.cr)||0,ac:parseFloat(r.acos)||0,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
-        // Shops
-        const shops=await api("shops",{start:sd,end:ed,store,seller,brand,asin:asinF}).catch(e=>{console.error("shops ERROR:",e.message);return[];});
-        console.log("shops:",Array.isArray(shops)?shops.length+" rows":"NOT ARRAY");
-        if(!cancelled)setFShopData((shops||[]).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
-        // Team
-        const team=await api("team",{start:sd,end:ed,seller,store,brand,asin:asinF}).catch(e=>{console.error("team ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];});
-        console.log("team:",Array.isArray(team)?team.length+" rows":"NOT ARRAY",JSON.stringify(team).slice(0,200));
-        if(!cancelled)setFSeller((team||[]).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
-        console.log("=== DATA FETCH DONE ===");
-      }catch(e){console.error("Fetch error:",e)}
-      if(!cancelled)setLoading(false);
-    })();
-    // Also refresh inventory on store change
-    if(live){
-      api("inventory/snapshot",{store}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
-      api("inventory/by-shop",{store}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
-      api("inventory/stock-trend",{store}).then(d=>{if(!cancelled)setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
-    }
+    const days=Math.max(1,Math.round((new Date(_ed)-new Date(_sd))/86400000)+1);
+    const pe=new Date(new Date(_sd+"T00:00:00").getTime()-86400000);
+    const ps=new Date(pe.getTime()-(days-1)*86400000);
+    // Batch 1: critical data (summary + daily)
+    const arr=v=>Array.isArray(v)?v:[];
+    (async()=>{try{
+      const[summary,daily]=await Promise.all([
+        api("exec/summary",p).catch(e=>{setFilterError(prev=>(prev?prev+' | ':'')+'Exec: '+e.message);return EMPTY_EM;}),
+        api("exec/daily",p).catch(e=>{console.error("exec/daily FAIL:",e);setFilterError(prev=>(prev?prev+" | ":"")+"Daily: "+e.message);return[];}),
+      ]);
+      if(cancelled)return;
+      setEm(summary&&summary.sales!=null?summary:EMPTY_EM);
+      setFDaily(arr(daily).map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+"T12:00:00");const label=isNaN(dt)?ds:MS[dt.getMonth()]+" "+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0}}));
+      // Batch 2: secondary data + prev period (non-blocking)
+      const[prev,asins,shops,team]=await Promise.all([
+        api("exec/summary",{...p,start:ps.toISOString().slice(0,10),end:pe.toISOString().slice(0,10)}).catch(()=>null),
+        api("product/asins",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
+        api("shops",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
+        api("team",{start:_sd,end:_ed,seller:_sl,store:_st,asin:_af}).catch(e=>{setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];}),
+      ]);
+      if(cancelled)return;
+      setPrevEm(prev&&prev.sales?prev:null);
+      setFAsin(arr(asins).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
+      setFShopData(arr(shops).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0})));
+      setFSeller(arr(team).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
+    }catch(e){console.error("Fetch error:",e)}
+    if(!cancelled)setLoading(false);})();
     return()=>{cancelled=true};
-  },[live,dbConnecting,sd,ed,store,seller,brand,asinF]);
+  },[fetchTrigger]);
 
-  // ═══════════ FETCH PLAN DATA ═══════════
+  // ═══════════ FETCH PLAN DATA (debounced) ═══════════
+  const [planTrigger,setPlanTrigger]=useState(0);
+  const planParamsRef=useRef({planYear,store,seller,asinF});
+  planParamsRef.current={planYear,store,seller,asinF};
   useEffect(()=>{
     if(!live||dbConnecting)return;
+    const timer=setTimeout(()=>setPlanTrigger(t=>t+1),400);
+    return()=>clearTimeout(timer);
+  },[planYear,store,seller,asinF,live,dbConnecting]);
+  useEffect(()=>{
+    if(!live||dbConnecting||planTrigger===0)return;
     let cancelled=false;
+    const{planYear:_py,store:_st,seller:_sl,asinF:_af}=planParamsRef.current;
     (async()=>{
       try{
         const[planRes,actualsRes]=await Promise.all([
-          api("plan/data",{year:planYear,store,brand,seller,asin:asinF}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
-          api("plan/actuals",{year:planYear,store,brand,seller,asin:asinF}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
+          api("plan/data",{year:_py,store:_st,seller:_sl,asin:_af}).catch(e=>{console.error("plan/data ERROR:",e.message);setFilterError(prev=>(prev?prev+' | ':'')+'Plan: '+e.message);return null;}),
+          api("plan/actuals",{year:_py,store:_st,seller:_sl,asin:_af}).catch(e=>{console.error("plan/actuals ERROR:",e.message);return null;})
         ]);
         console.log("plan/data:",JSON.stringify(planRes).slice(0,300));
         console.log("plan/actuals monthly:",actualsRes?.monthly?.length,"rows");
@@ -413,18 +426,20 @@ export default function App(){
         const aT={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
         monthlyActuals.forEach(m=>{aT.rv+=m.ra||0;aT.gp+=m.gpa||0;aT.ad+=m.aa||0;aT.un+=m.ua||0;aT.se+=m.sa||0;aT.im+=m.ia||0;if(m.cra)aT.cr.push(m.cra);if(m.cta)aT.ct.push(m.cta);});
         pk.rv.a=aT.rv;pk.gp.a=aT.gp;pk.ad.a=aT.ad;pk.un.a=aT.un;pk.se.a=aT.se;pk.im.a=aT.im;
-        // Weighted CR = Units / Sessions (matching PBI), convert to %
-        pk.cr.a=aT.se>0?Math.round(aT.un/aT.se*10000)/100:0;
-        pk.ct.a=aT.im>0?Math.round((aT.cr.length?aT.cr.reduce((s,v)=>s+v,0)*aT.se/aT.cr.length:0)/aT.im*10000)/100:0;
-        // Plan CR/CTR already as ratio from server, convert to %
-        pk.cr.p=Math.round((pk.cr.p||0)*10000)/100;
-        pk.ct.p=Math.round((pk.ct.p||0)*10000)/100;
+        // CR = total Units / total Sessions (weighted, like PBI)
+        pk.cr.a=aT.se>0?aT.un/aT.se:0;
+        // CTR = average of monthly CTRs (since we don't have total clicks)
+        pk.ct.a=aT.ct.length?aT.ct.reduce((s,v)=>s+v,0)/aT.ct.length:0;
         setPlanKpiState(pk);
 
         // Build monthPlanData: merge plan + actuals per month
         const mpd=MS.map((mName,i)=>{
           const mn=i+1;const pp=monthlyPlan[mn]||{};const aa=monthlyActuals.find(m=>m.mn===mn)||{};
-          return{m:mName,gpa:aa.gpa||0,gpp:pp.gp||0,ra:aa.ra||0,rp:pp.rv||0,aa:aa.aa||0,ap:pp.ad||0,ua:aa.ua||0,up:pp.un||0,sa:aa.sa||0,sp:pp.se||0,ia:aa.ia||0,ip:pp.im||0,cra:Math.round((aa.cra||0)*10000)/100,crp:pp.crW!=null?Math.round(pp.crW*10000)/100:(pp.cr||0),cta:Math.round((aa.cta||0)*10000)/100,ctp:pp.ctW!=null?Math.round(pp.ctW*10000)/100:(pp.ct||0)};
+          // Plan CR/CTR: use weighted values (crW/ctW) from server, or fallback
+          const planCr = pp.crW != null ? pp.crW : (pp.cr ? pp.cr/100 : 0);
+          const planCtr = pp.ctW != null ? pp.ctW : (pp.ct ? pp.ct/100 : 0);
+          // Store CR/CTR as percentages for display (ratio * 100)
+          return{m:mName,gpa:aa.gpa||0,gpp:pp.gp||0,ra:aa.ra||0,rp:pp.rv||0,aa:aa.aa||0,ap:pp.ad||0,ua:aa.ua||0,up:pp.un||0,sa:aa.sa||0,sp:pp.se||0,ia:aa.ia||0,ip:pp.im||0,cra:Math.round((aa.cra||0)*10000)/100,crp:Math.round(planCr*10000)/100,cta:Math.round((aa.cta||0)*10000)/100,ctp:Math.round(planCtr*10000)/100};
         });
         setMonthPlanState(mpd);
 
@@ -435,31 +450,33 @@ export default function App(){
           // Sum plan across months
           let pTot={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:[],ct:[]};
           Object.values(pd.months||{}).forEach(m=>{pTot.rv+=m.rv||0;pTot.gp+=m.gp||0;pTot.ad+=m.ad||0;pTot.un+=m.un||0;pTot.se+=m.se||0;if(m.cr)pTot.cr.push(m.cr);});
-          const crP=pTot.se>0&&pTot.un>0?Math.round(pTot.un/pTot.se*10000)/100:(pTot.cr.length?Math.round(pTot.cr.reduce((s,v)=>s+v,0)/pTot.cr.length*100)/100:0);
+          const crP=pTot.cr.length?pTot.cr.reduce((s,v)=>s+v,0)/pTot.cr.length:0;
           // Build per-month merged data
           const allMonths=new Set([...Object.keys(pd.months||{}),...Object.keys(ad.months||{})]);
           const mData={};
           allMonths.forEach(mn=>{
             const pm=pd.months?.[mn]||{};const am=ad.months?.[mn]||{};
-            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:0,ip:pm.im||0,cra:Math.round((am.cr||0)*10000)/100,crp:pm.un&&pm.se?Math.round(pm.un/pm.se*10000)/100:(pm.cr||0),cta:0,ctp:0};
+            mData[mn]={ra:am.rv||0,rp:pm.rv||0,ga:am.gp||0,gp:pm.gp||0,aa:am.ad||0,ap:pm.ad||0,ua:am.un||0,up:pm.un||0,sa:am.se||0,sp:pm.se||0,ia:am.im||0,ip:pm.im||0,cra:am.cr||0,crp:pm.cr||0,cta:am.ct||0,ctp:pm.ct||0};
           });
-          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:Math.round((ad.cra||0)*10000)/100,crp:crP,cta:Math.round((ad.cta||0)*10000)/100,ctp:0,mData};
+          return{a:asin,br:pd.brand||ad.br||"",sl:ad.sl||"",ga:ad.ga||0,gp:pTot.gp,ra:ad.ra||0,rp:pTot.rv,aa:ad.aa||0,ap:pTot.ad,ua:ad.ua||0,up:pTot.un,sa:ad.sa||0,sp:pTot.se,ia:ad.ia||0,ip:pTot.im,cra:ad.cra||0,crp:crP,cta:ad.cta||0,ctp:0,mData};
         }).sort((a,b)=>(b.ga||0)-(a.ga||0));
         setAsinPlanBkState(abk);
       }catch(e){console.error("Plan fetch error:",e)}
     })();
     return()=>{cancelled=true};
-  },[live,dbConnecting,planYear,store,brand,seller,asinF]);
+  },[planTrigger]);
 
   const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
 
   const pctChg=useCallback((cur,prev)=>{if(prev==null||prev===0)return undefined;return((cur-prev)/Math.abs(prev))*100},[]);
 
   // Filter visibility per page
-  const showStore=["exec","plan","prod","shops","team","daily","inv"].includes(pg);
+  // Filter visibility: Exec=Brand+Seller, Plan=Brand+Seller+ASIN, Prod/Shop/Team/Daily=Store+Seller+ASIN, Inv=Store
+  // "Brand" = same as Store (account.shop), just different label
+  const showShopFilter=["exec","prod","shops","team","daily","inv","plan"].includes(pg);
+  const shopLabel="All Shops";
   const showSeller=["exec","prod","shops","team","plan","daily"].includes(pg);
-  const showBrand=["exec","plan","prod","shops","team","daily"].includes(pg);
-  const showAsin=["exec","plan","prod","shops","team","daily"].includes(pg);
+  const showAsin=["plan","prod","shops","team","daily"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting..."/></div>;
 
@@ -478,19 +495,17 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:8}}>{mob&&<button onClick={()=>setMobileFilters(!mobileFilters)} style={{background:t.primaryLight,border:"1px solid "+t.primary+"33",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:t.primary,fontWeight:700}}>☰</button>}<span style={{fontSize:mob?14:16,fontWeight:800,color:t.text}}>{cn?.i} {cn?.l}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
-            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v4.0</span>
+            <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"🟢 Live DB":"🟡 No DB"}</span><span style={{fontSize:8,color:t.textMuted,marginLeft:4}}>v3.8</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:t.textSec}}>{isDark?"☀":"🌙"}</button>
           </div>
         </div>
         {/* FILTER BAR */}
-        {(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        {pg!=="inv"&&(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
-          {["prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
-          {showStore&&<Sel value={store} onChange={setStore} options={opts.stores} label="All Shops" t={t}/>}
+          {showShopFilter&&<Sel value={store} onChange={setStore} options={opts.stores} label={shopLabel} t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
-          {showBrand&&<Sel value={brand} onChange={setBrand} options={opts.brands} label="All Brands" t={t}/>}
-          {showAsin&&<Sel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
+          {showAsin&&<AsinSel value={asinF} onChange={setAsinF} options={opts.asins} label="All ASINs" t={t}/>}
         </div>}
       </div>
 
@@ -499,7 +514,7 @@ export default function App(){
         {filterError&&<div style={{padding:"10px 16px",marginBottom:12,background:"#FEF3CD",border:"1px solid #F0D060",borderRadius:8,fontSize:11,color:"#856404"}}>⚠️ Filter issue: {filterError} — <a href={window.location.origin+"/api/debug/filters"} target="_blank" rel="noopener" style={{color:"#0066CC",textDecoration:"underline"}}>View debug info</a></div>}
         {pg==="exec"&&<ExecPage t={t} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={em} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob}/>}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend}/>}
-        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} brand={brand} asinF={asinF}/>}
+        {pg==="plan"&&<PlanPage t={t} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF}/>}
         {pg==="prod"&&<ProdPage t={t} fAsin={fAsin} fDaily={fDaily}/>}
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} fSeller={fSeller} fDaily={fDaily}/>}
