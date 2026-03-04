@@ -437,7 +437,7 @@ app.get('/api/debug/plan', async (req, res) => {
 
 /* ═══════════ ASIN PLAN ═══════════ */
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const METRICS_MAP={'Rev':'rv','Unit':'un','Ads':'ad','GP':'gp','NP':'gp','Session':'se','Impression':'im','CR':'cr','CTR':'ct','Price':'pr','CPM':'cpm','CPC':'cpc','Cogs':'cg','AMZ fee':'af','Gross Profit':'gp','rev':'rv','unit':'un','ads':'ad','gp':'gp','np':'gp','session':'se','impression':'im','cr':'cr','ctr':'ct','price':'pr','cpm':'cpm','cpc':'cpc','cogs':'cg','amz fee':'af','gross profit':'gp','revenue':'rv','Revenue':'rv','units':'un','Units':'un','grossProfit':'gp','adSpend':'ad','Ad Spend':'ad','sessions':'se','Sessions':'se','impressions':'im','Impressions':'im'};
+const METRICS_MAP={'Rev':'rv','Unit':'un','Ads':'ad','GP':'gp','NP':'np','Session':'se','Impression':'im','CR':'cr','CTR':'ct','Price':'pr','CPM':'cpm','CPC':'cpc','Cogs':'cg','AMZ fee':'af','Gross Profit':'gp','Net Profit':'np','rev':'rv','unit':'un','ads':'ad','gp':'gp','np':'np','session':'se','impression':'im','cr':'cr','ctr':'ct','price':'pr','cpm':'cpm','cpc':'cpc','cogs':'cg','amz fee':'af','gross profit':'gp','net profit':'np','revenue':'rv','Revenue':'rv','units':'un','Units':'un','grossProfit':'gp','netProfit':'np','adSpend':'ad','Ad Spend':'ad','sessions':'se','Sessions':'se','impressions':'im','Impressions':'im'};
 function mapMetric(m) {
   if (!m) return null;
   const t = m.trim();
@@ -445,7 +445,8 @@ function mapMetric(m) {
   const lm = t.toLowerCase();
   if (METRICS_MAP[lm]) return METRICS_MAP[lm];
   if (lm.includes('revenue')||lm.includes('sales')) return 'rv';
-  if (lm==='gp'||lm==='np'||lm.includes('gross profit')||lm.includes('net profit')) return 'gp';
+  if (lm==='np'||lm.includes('net profit')) return 'np';
+  if (lm==='gp'||lm.includes('gross profit')) return 'gp';
   if (lm==='ads'||lm==='ad'||lm==='ad spend') return 'ad';
   if (lm.includes('unit')) return 'un';
   if (lm.includes('session')) return 'se';
@@ -505,28 +506,34 @@ app.get('/api/plan/data', async (req, res) => {
     });
 
     // KPI: CR weighted = Units/Sessions, CTR weighted = Sessions/Impressions
-    const kpi={gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
+    const kpi={gp:{a:0,p:0},np:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
     const crDirect=[], ctDirect=[];
     Object.values(monthlyPlan).forEach(mp => {
-      ['gp','rv','ad','un','se','im'].forEach(k=>{kpi[k].p+=mp[k]||0;});
+      ['gp','np','rv','ad','un','se','im'].forEach(k=>{if(kpi[k])kpi[k].p+=mp[k]||0;});
       if(mp.cr) crDirect.push(mp.cr);
       if(mp.ct) ctDirect.push(mp.ct);
     });
-    // Weighted CR (preferred) or fallback direct/100
+    // Weighted CR (preferred) or fallback
     if(kpi.se.p>0&&kpi.un.p>0) kpi.cr.p=kpi.un.p/kpi.se.p;
-    else if(crDirect.length) kpi.cr.p=(crDirect.reduce((s,v)=>s+v,0)/crDirect.length)/100;
+    else if(crDirect.length) {
+      const avg=crDirect.reduce((s,v)=>s+v,0)/crDirect.length;
+      kpi.cr.p=avg>1?avg/100:avg; // auto-detect: >1 means whole %, <=1 means ratio
+    }
     // Weighted CTR or fallback
     if(kpi.im.p>0&&kpi.se.p>0) kpi.ct.p=kpi.se.p/kpi.im.p;
-    else if(ctDirect.length) kpi.ct.p=(ctDirect.reduce((s,v)=>s+v,0)/ctDirect.length)/100;
+    else if(ctDirect.length) {
+      const avg=ctDirect.reduce((s,v)=>s+v,0)/ctDirect.length;
+      kpi.ct.p=avg>1?avg/100:avg; // auto-detect: >1 means whole %, <=1 means ratio
+    }
 
     // Per-month plan CR/CTR (weighted per month)
     for (const mn in monthlyPlan) {
       const mp = monthlyPlan[mn];
       if (mp.un && mp.se) mp.crW = mp.un / mp.se;
-      else if (mp.cr) mp.crW = mp.cr / 100;
+      else if (mp.cr) mp.crW = mp.cr > 1 ? mp.cr / 100 : mp.cr;
       else mp.crW = 0;
       if (mp.se && mp.im) mp.ctW = mp.se / mp.im;
-      else if (mp.ct) mp.ctW = mp.ct / 100;
+      else if (mp.ct) mp.ctW = mp.ct > 1 ? mp.ct / 100 : mp.ct;
       else mp.ctW = 0;
     }
 
