@@ -307,6 +307,7 @@ app.get('/api/inventory/snapshot', async (req, res) => {
     } catch (e) { /* seller_board_stock may not exist */ }
 
     const rows = await q(`SELECT
+      (SELECT MAX(date) FROM fba_iventory_planning) as snapshotDate,
       SUM(CAST(available AS SIGNED)) as availableInv,
       SUM(COALESCE(totalReservedQuantity,0)) as reserved, SUM(COALESCE(inboundQuantity,0)) as inbound,
       COUNT(DISTINCT CASE WHEN daysOfSupply<=7 THEN sku END) as criticalSkus,
@@ -324,6 +325,7 @@ app.get('/api/inventory/snapshot', async (req, res) => {
     // FBA Stock: prefer seller_board_stock, fallback to available+reserved
     const fbaStock = fbaFromStock > 0 ? fbaFromStock : (avail + reserved);
     res.json({
+      snapshotDate: r.snapshotDate ? String(r.snapshotDate).slice(0,10) : null,
       fbaStock, availableInv: avail,
       totalInventory: avail+reserved+inbound,
       reserved, inbound,
@@ -341,6 +343,27 @@ app.get('/api/inventory/stock-trend', async (req, res) => {
     let extra = ''; const params = [];
     if (accId) { extra = ' AND accountId = ?'; params.push(accId); }
     res.json(await q(`SELECT date, SUM(FBAStock) as fbaStock FROM seller_board_stock_daily WHERE date>=DATE_SUB(CURDATE(), INTERVAL 60 DAY)${extra} GROUP BY date ORDER BY date`, params));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/inventory/storage-monthly', async (req, res) => {
+  try {
+    const accId = await storeToAccId(req.query.store);
+    let extra = ''; const params = [];
+    if (accId) { extra = ' AND accountId = ?'; params.push(accId); }
+    // Get last snapshot of each month (most accurate monthly fee)
+    const rows = await q(`
+      SELECT DATE_FORMAT(date,'%Y-%m') as ym,
+        MAX(date) as lastDate,
+        SUM(COALESCE(estimatedStorageCostNextMonth,0)) as fee
+      FROM fba_iventory_planning
+      WHERE date IN (
+        SELECT MAX(date) FROM fba_iventory_planning GROUP BY DATE_FORMAT(date,'%Y-%m')
+      )${extra}
+      GROUP BY DATE_FORMAT(date,'%Y-%m')
+      ORDER BY ym
+    `, params);
+    res.json((rows||[]).map(r => ({ month: r.ym, fee: Math.round((parseFloat(r.fee)||0)*100)/100 })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
