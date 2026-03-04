@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
-const VER = 'v4.2-2026-03-03';
+const VER = 'v4.3-2026-03-04';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -540,23 +540,36 @@ app.get('/api/plan/actuals', async (req, res) => {
     const yr = parseInt(year) || new Date().getFullYear();
     const accId = await storeToAccId(store);
 
-    // Source 1: Revenue, GP, Units, Sessions from seller_board_sales
+    // Source 1: Revenue, GP, Units, Sessions, Ads
+    // When seller/asin filter active → use seller_board_product (has asin/seller cols)
+    // Otherwise → use seller_board_sales (faster, account-level)
     let salesRows = [];
-    try {
-      const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
-      salesRows = await q(`SELECT MONTH(sc.date) as mn,
-        SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp,
-        SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions
-        FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
-    } catch(e1) { console.warn('plan/actuals sales query failed:', e1.message); }
-
-    // Source 2: Ads from seller_board_product
-    let adsRows = [];
     const pF = pWhere(`${yr}-01-01`,`${yr}-12-31`,accId,seller,af);
-    try {
-      adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
-        FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
-    } catch(e2) { console.warn('plan/actuals ads query failed:', e2.message); }
+    if (useProduct(seller, af)) {
+      try {
+        salesRows = await q(`SELECT MONTH(p.date) as mn,
+          SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp, SUM(COALESCE(p.netProfit,0)) as np,
+          SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
+          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
+      } catch(e1) { console.warn('plan/actuals product query failed:', e1.message); }
+    } else {
+      try {
+        const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
+        salesRows = await q(`SELECT MONTH(sc.date) as mn,
+          SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp, SUM(COALESCE(sc.netProfit,0)) as np,
+          SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions, SUM(ABS(${SC_ADS})) as ads
+          FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
+      } catch(e1) { console.warn('plan/actuals sales query failed:', e1.message); }
+    }
+
+    // Source 2: Ads from seller_board_product (only needed when using seller_board_sales above)
+    let adsRows = [];
+    if (!useProduct(seller, af)) {
+      try {
+        adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
+          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
+      } catch(e2) { console.warn('plan/actuals ads query failed:', e2.message); }
+    }
 
     // Source 3: Impressions + Clicks from analytics_search_catalog_performance
     let impRows = [];
@@ -569,8 +582,9 @@ app.get('/api/plan/actuals', async (req, res) => {
 
     // Merge all into monthly
     const monthly = {};
-    for(let m=1;m<=12;m++) monthly[m]={rv:0,gp:0,un:0,se:0,ad:0,im:0,clicks:0};
-    salesRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.rv=parseFloat(r.revenue)||0;m.gp=parseFloat(r.gp)||0;m.un=parseInt(r.units)||0;m.se=parseFloat(r.sessions)||0;});
+    for(let m=1;m<=12;m++) monthly[m]={rv:0,gp:0,np:0,un:0,se:0,ad:0,im:0,clicks:0};
+    salesRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.rv=parseFloat(r.revenue)||0;m.gp=parseFloat(r.gp)||0;m.np=parseFloat(r.np)||0;m.un=parseInt(r.units)||0;m.se=parseFloat(r.sessions)||0;m.ad=parseFloat(r.ads)||0;});
+    // Ads from separate query only when NOT using product table (avoids double-count)
     adsRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.ad=parseFloat(r.ads)||0;});
     impRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.im=parseFloat(r.imp)||0;m.clicks=parseFloat(r.clicks)||0;});
 
@@ -579,7 +593,7 @@ app.get('/api/plan/actuals', async (req, res) => {
       const d=monthly[m];
       const cr=d.se>0?d.un/d.se:0;
       const ctr=d.im>0?d.clicks/d.im:0;
-      monthlyArr.push({m:MS[m-1],mn:m,ra:d.rv,gpa:d.gp,aa:d.ad,ua:d.un,sa:d.se,ia:d.im,
+      monthlyArr.push({m:MS[m-1],mn:m,ra:d.rv,gpa:d.gp,npa:d.np,aa:d.ad,ua:d.un,sa:d.se,ia:d.im,
         cra:Math.round(cr*10000)/10000, cta:Math.round(ctr*10000)/10000});
     }
 
@@ -587,7 +601,7 @@ app.get('/api/plan/actuals', async (req, res) => {
     let asinRows = [];
     try {
       asinRows = await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
-      SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp,
+      SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp, SUM(COALESCE(p.netProfit,0)) as np,
       SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
       FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
       LEFT JOIN (SELECT DISTINCT asin, brand_name FROM asin_plan) ap2 ON p.asin COLLATE utf8mb4_0900_ai_ci=ap2.asin
@@ -598,18 +612,18 @@ app.get('/api/plan/actuals', async (req, res) => {
     asinRows.forEach(r=>{
       const key=r.asin, mn=r.mn;
       if(!asinData[key]) asinData[key]={brand:r.planBrand||'',seller:r.seller||'',months:{}};
-      if(!asinData[key].months[mn]) asinData[key].months[mn]={rv:0,gp:0,ad:0,un:0,se:0,im:0,cr:0,ct:0};
+      if(!asinData[key].months[mn]) asinData[key].months[mn]={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,cr:0,ct:0};
       const md=asinData[key].months[mn];
-      md.rv+=parseFloat(r.revenue)||0;md.gp+=parseFloat(r.gp)||0;md.ad+=parseFloat(r.ads)||0;
+      md.rv+=parseFloat(r.revenue)||0;md.gp+=parseFloat(r.gp)||0;md.np+=parseFloat(r.np)||0;md.ad+=parseFloat(r.ads)||0;
       md.un+=parseInt(r.units)||0;md.se+=parseFloat(r.sessions)||0;
       md.cr=md.se>0?md.un/md.se:0;
     });
 
     const asinBreakdown=Object.entries(asinData).map(([asin,d])=>{
-      const t={rv:0,gp:0,ad:0,un:0,se:0,im:0};
-      Object.values(d.months).forEach(m=>{t.rv+=m.rv;t.gp+=m.gp;t.ad+=m.ad;t.un+=m.un;t.se+=m.se;});
+      const t={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0};
+      Object.values(d.months).forEach(m=>{t.rv+=m.rv;t.gp+=m.gp;t.np+=m.np;t.ad+=m.ad;t.un+=m.un;t.se+=m.se;});
       const cr=t.se>0?t.un/t.se:0;
-      return{a:asin,br:d.brand,sl:d.seller,ra:t.rv,ga:t.gp,aa:t.ad,ua:t.un,sa:t.se,ia:t.im,
+      return{a:asin,br:d.brand,sl:d.seller,ra:t.rv,ga:t.gp,na:t.np,aa:t.ad,ua:t.un,sa:t.se,ia:t.im,
         cra:Math.round(cr*10000)/10000,cta:0,months:d.months};
     }).sort((a,b)=>b.ga-a.ga);
 
