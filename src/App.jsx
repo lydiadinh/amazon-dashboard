@@ -248,15 +248,126 @@ function OpsPage({t,fDaily,fShopData}){
   </div>;
 }
 
-/* ═══════════ AI INSIGHT ═══════════ */
-function AiInsight({t,live,context}){
-  const[open,setOpen]=useState(false);const[loading,setLoading]=useState(false);const[insight,setInsight]=useState("");const[question,setQuestion]=useState("");
-  const run=async()=>{setLoading(true);setInsight("");
-    try{const data=await apiPost("ai/insight",{context,question:question||undefined});setInsight(data.insight||"No insight available")}catch(e){
-      const{em,fAsin}=context;const top=fAsin?.[0];const negCount=fAsin?.filter(a=>a.n<0).length||0;let txt=`📊 Executive Summary\n\nRevenue: ${$(em?.sales)} | Net Profit: ${$(em?.netProfit)} | Margin: ${(em?.margin||0).toFixed(1)}%\n\n`;if(top)txt+=`🏆 Top ASIN: ${top.a} (${top.b}) — ${$(top.r)} revenue, ${$(top.n)} NP\n\n`;if(negCount)txt+=`⚠️ ${negCount} ASINs with negative profit need attention.`;setInsight(txt);}
-    setLoading(false);};
-  if(!open)return<button onClick={()=>setOpen(true)} style={{position:"fixed",bottom:20,right:20,zIndex:999,background:"linear-gradient(135deg,#3B4A8A,#6B7FD7)",color:"#fff",border:"none",borderRadius:14,padding:"12px 18px",cursor:"pointer",boxShadow:"0 4px 20px rgba(59,74,138,.3)",fontSize:13,fontWeight:700}}>🤖 AI Insight</button>;
-  return<div style={{position:"fixed",bottom:20,right:20,zIndex:999,width:420,maxHeight:"70vh",background:t.card,borderRadius:14,border:"1px solid "+t.cardBorder,boxShadow:"0 12px 40px "+t.shadow,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{padding:"12px 16px",borderBottom:"1px solid "+t.divider,display:"flex",justifyContent:"space-between",background:`linear-gradient(135deg,${t.primary},#5A6BC5)`}}><span style={{fontSize:13,fontWeight:700,color:"#fff"}}>🤖 AI Insight</span><button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:6,color:"#fff",cursor:"pointer",padding:"4px 8px",fontSize:12}}>✕</button></div><div style={{padding:12,borderBottom:"1px solid "+t.divider}}><input value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask a question or leave blank..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+t.inputBorder,background:t.inputBg,color:t.text,fontSize:12,boxSizing:"border-box"}}/><button onClick={run} disabled={loading} style={{marginTop:8,width:"100%",padding:"8px",borderRadius:8,border:"none",background:loading?t.textMuted:t.primary,color:"#fff",cursor:loading?"wait":"pointer",fontSize:12,fontWeight:700}}>{loading?"⏳ Analyzing...":"Analyze"}</button></div><div style={{flex:1,overflow:"auto",padding:14}}>{insight?<div style={{fontSize:12,color:t.textSec,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{insight}</div>:<div style={{fontSize:11,color:t.textMuted,textAlign:"center",padding:20}}>Click Analyze for AI insights.</div>}</div></div>;
+/* ═══════════ AI CHAT ═══════════ */
+const AI_HINTS={
+  exec:["So sánh Jan vs Feb","Shop nào cần cắt quảng cáo?","Rủi ro lớn nhất hiện tại?"],
+  inv:["Giải thích Sell-Through & Days of Health","Nên xử lý hàng tồn >90 ngày như thế nào?","Phí storage có đáng lo không?"],
+  plan:["Mình có đang đúng target không?","ASIN nào lệch plan nhiều nhất?","Q2 cần điều chỉnh gì?"],
+  prod:["ASIN nào nên tắt ads?","Top ASINs có gì chung?","ACOS bao nhiêu là healthy?"],
+  shops:["Shop nào cần action gấp?","Revenue tập trung quá nhiều vào 1 shop?","Cải thiện shop lỗ bằng cách nào?"],
+  team:["Seller nào cần coaching?","So sánh hiệu suất top vs bottom","Nên phân lại ASIN thế nào?"],
+  daily:["Có anomaly gì hôm nay không?","Pattern ngày trong tuần","Trend 7 ngày gần nhất"],
+};
+const PG_LABEL={exec:"Executive Overview",inv:"Inventory",plan:"ASIN Plan",prod:"Product Performance",shops:"Shop Performance",team:"Team Performance",daily:"Daily Ops"};
+
+function buildCtx(pg,d){
+  const{em,fAsin,fShopData,fSeller,invData,invShop,fDaily,sd,ed}=d;
+  const base={page:PG_LABEL[pg]||pg,period:`${sd} to ${ed}`};
+  if(pg==="exec")return{...base,kpi:{revenue:em?.sales,np:em?.netProfit,margin:em?.margin,units:em?.units,orders:em?.orders,refundRate:em?.pctRefunds,acos:em?.realAcos,adsCost:em?.advCost,amazonFees:em?.amazonFees,cogs:em?.cogs},topAsins:fAsin?.slice(0,15)?.map(a=>({asin:a.a,shop:a.b,rev:a.r,np:a.n,margin:a.m,acos:a.ac})),shops:fShopData?.slice(0,11)?.map(s=>({shop:s.s,rev:s.r,np:s.n,margin:s.m}))};
+  if(pg==="inv")return{...base,inv:{fbaStock:invData?.fbaStock,available:invData?.availableInv,reserved:invData?.reserved,criticalSkus:invData?.criticalSkus,daysSupply:invData?.avgDaysOfSupply,storageFee:invData?.storageFee,sellThrough:invData?.avgSellThrough,aging:{d0_90:invData?.age0_90,d91_180:invData?.age91_180,d181_270:invData?.age181_270,d271_365:invData?.age271_365,d365p:invData?.age365plus}},byShop:invShop?.slice(0,10)};
+  if(pg==="prod")return{...base,top:fAsin?.slice(0,20)?.map(a=>({asin:a.a,shop:a.b,rev:a.r,np:a.n,margin:a.m,acos:a.ac,units:a.u})),losing:fAsin?.filter(a=>a.n<0)?.slice(0,10)?.map(a=>({asin:a.a,shop:a.b,rev:a.r,np:a.n,acos:a.ac}))};
+  if(pg==="shops")return{...base,shops:fShopData?.map(s=>({shop:s.s,rev:s.r,np:s.n,margin:s.m,orders:s.o,fba:s.f}))};
+  if(pg==="team")return{...base,sellers:fSeller?.map(s=>({seller:s.sl,rev:s.r,np:s.n,margin:s.m,asins:s.as}))};
+  if(pg==="daily")return{...base,trend:fDaily?.slice(-30)?.map(d=>({date:d.date,rev:d.revenue,np:d.netProfit,units:d.units}))};
+  return base;
+}
+
+function AiChat({t,pg,contextData}){
+  const[open,setOpen]=useState(false);
+  const[msgs,setMsgs]=useState([]);
+  const[input,setInput]=useState("");
+  const[loading,setLoading]=useState(false);
+  const endRef=useRef(null);
+  const inputRef=useRef(null);
+  const prevPg=useRef(pg);
+  const mob=window.innerWidth<768;
+
+  // Reset chat when page changes
+  useEffect(()=>{if(prevPg.current!==pg){setMsgs([]);prevPg.current=pg;}},[pg]);
+  // Auto scroll
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs,loading]);
+  // Focus input on open
+  useEffect(()=>{if(open)setTimeout(()=>inputRef.current?.focus(),100)},[open]);
+
+  const send=async(text)=>{
+    const q=text||input.trim();if(!q||loading)return;
+    setInput("");
+    setMsgs(prev=>[...prev,{role:"user",text:q}]);
+    setLoading(true);
+    const ctx=buildCtx(pg,contextData);
+    try{
+      const data=await apiPost("ai/insight",{context:ctx,question:q,history:msgs.slice(-6)});
+      setMsgs(prev=>[...prev,{role:"ai",text:data.insight||"Không thể phân tích."}]);
+    }catch(e){
+      setMsgs(prev=>[...prev,{role:"ai",text:`⚠️ Chưa kết nối AI (cần ANTHROPIC_API_KEY trong Railway).\n\nLỗi: ${e.message}`}]);
+    }
+    setLoading(false);
+  };
+
+  const renderMd=(text)=>text.split("\n").map((line,i)=>{
+    if(line.startsWith("### "))return<div key={i} style={{fontSize:12,fontWeight:700,color:t.text,marginTop:10,marginBottom:3}}>{line.slice(4)}</div>;
+    if(line.startsWith("## "))return<div key={i} style={{fontSize:13,fontWeight:700,color:t.primary,marginTop:12,marginBottom:4}}>{line.slice(3)}</div>;
+    if(line.startsWith("# "))return<div key={i} style={{fontSize:14,fontWeight:800,color:t.text,marginTop:14,marginBottom:6}}>{line.slice(2)}</div>;
+    if(line.match(/^[•\-\*]\s/))return<div key={i} style={{paddingLeft:14,position:"relative",marginBottom:2}}><span style={{position:"absolute",left:2}}>•</span>{line.replace(/^[•\-\*]\s/,"")}</div>;
+    if(line.trim()==="")return<div key={i} style={{height:4}}/>;
+    const parts=line.split(/\*\*(.*?)\*\*/g);
+    if(parts.length>1)return<div key={i} style={{marginBottom:1}}>{parts.map((p,j)=>j%2===1?<strong key={j} style={{fontWeight:700,color:t.text}}>{p}</strong>:<span key={j}>{p}</span>)}</div>;
+    return<div key={i} style={{marginBottom:1}}>{line}</div>;
+  });
+
+  const hints=AI_HINTS[pg]||AI_HINTS.exec;
+
+  // Floating button
+  if(!open)return<button onClick={()=>setOpen(true)} style={{position:"fixed",bottom:mob?60:20,right:16,zIndex:999,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,color:"#fff",border:"none",borderRadius:16,padding:"12px 20px",cursor:"pointer",boxShadow:"0 4px 20px rgba(59,74,138,.35)",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,transition:"transform .2s"}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform=""}>🤖 AI Chat</button>;
+
+  const W=mob?"100%":"420px";
+  const H=mob?"100%":"70vh";
+
+  return ReactDOM.createPortal(<>
+    {/* Backdrop */}
+    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",zIndex:9998}}/>
+    {/* Chat panel */}
+    <div style={{position:"fixed",bottom:mob?0:20,right:mob?0:16,width:W,height:H,maxHeight:mob?"100vh":"70vh",zIndex:9999,background:t.card,borderRadius:mob?0:16,border:mob?"none":"1px solid "+t.cardBorder,boxShadow:"0 12px 40px "+t.shadow,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+      {/* Header */}
+      <div style={{padding:"14px 16px",background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🤖 AI Assistant</div><div style={{fontSize:10,color:"rgba(255,255,255,.7)",marginTop:2}}>Đang xem: {PG_LABEL[pg]||pg}</div></div>
+          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,color:"#fff",cursor:"pointer",padding:"6px 10px",fontSize:13}}>✕</button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
+        {msgs.length===0&&!loading&&<div style={{textAlign:"center",padding:"24px 10px"}}>
+          <div style={{fontSize:32,marginBottom:8}}>🧠</div>
+          <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:4}}>Hỏi bất cứ điều gì về data!</div>
+          <div style={{fontSize:11,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI sẽ phân tích dựa trên data trang {PG_LABEL[pg]||pg} đang hiển thị.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>{hints.map((h,i)=><button key={i} onClick={()=>send(h)} style={{padding:"8px 12px",borderRadius:10,border:"1px solid "+t.inputBorder,background:t.inputBg,color:t.textSec,fontSize:11,cursor:"pointer",textAlign:"left",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textSec}}>{h}</button>)}</div>
+        </div>}
+
+        {msgs.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
+          {m.role==="ai"&&<div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,marginRight:8,marginTop:2}}>🤖</div>}
+          <div style={{maxWidth:"80%",padding:"10px 14px",borderRadius:m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:m.role==="user"?`linear-gradient(135deg,${t.primary},#5A6BC5)`:t.inputBg,color:m.role==="user"?"#fff":t.textSec,fontSize:12,lineHeight:1.65}}>{m.role==="user"?m.text:renderMd(m.text)}</div>
+        </div>)}
+
+        {loading&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🤖</div>
+          <div style={{padding:"10px 14px",borderRadius:"14px 14px 14px 4px",background:t.inputBg}}>
+            <div style={{display:"flex",gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:t.textMuted,animation:`bounce .6s ${i*.15}s infinite alternate`}}/>)}</div>
+            <style>{`@keyframes bounce{from{opacity:.3;transform:translateY(0)}to{opacity:1;transform:translateY(-4px)}}`}</style>
+          </div>
+        </div>}
+        <div ref={endRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 14px",borderTop:"1px solid "+t.divider,flexShrink:0,display:"flex",gap:8,alignItems:"center"}}>
+        <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}} placeholder="Nhập câu hỏi..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid "+t.inputBorder,background:t.inputBg,color:t.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+        <button onClick={()=>send()} disabled={loading||!input.trim()} style={{width:36,height:36,borderRadius:12,border:"none",background:(!loading&&input.trim())?t.primary:t.inputBorder,color:(!loading&&input.trim())?"#fff":t.textMuted,cursor:(!loading&&input.trim())?"pointer":"default",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>➤</button>
+      </div>
+    </div>
+  </>,document.body);
 }
 
 /* ═══════════ SPINNER ═══════════ */
@@ -543,6 +654,6 @@ export default function App(){
     {/* MOBILE BOTTOM NAV */}
     {mob&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:t.sidebar,borderTop:"1px solid "+t.sidebarBorder,display:"flex",justifyContent:"space-around",padding:"6px 0",zIndex:998}}>{NAV.map(n=><button key={n.id} onClick={()=>{setPg(n.id);setMobileFilters(false)}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:6,color:pg===n.id?t.primary:t.textMuted,fontSize:9,fontWeight:pg===n.id?700:500,minWidth:0}}><span style={{fontSize:16}}>{n.i}</span><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:48}}>{n.l.split(" ")[0]}</span></button>)}</div>}
 
-    <AiInsight t={t} live={live} context={{em,fAsin:fAsin.slice(0,10)}}/>
+    <AiChat t={t} pg={pg} contextData={{em,fAsin,fShopData,fSeller,invData,invShop,fDaily,sd,ed}}/>
   </div>;
 }
