@@ -8,10 +8,10 @@ export async function checkBackend() {
   } catch { return false; }
 }
 
-export async function api(path, params = {}) {
+export async function api(path, params = {}, timeoutMs = 30000) {
   const qs = Object.entries(params).filter(([,v]) => v != null && v !== '' && v !== 'All').map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   const url = `${BASE}/api/${path}${qs ? '?' + qs : ''}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
 }
@@ -19,7 +19,7 @@ export async function api(path, params = {}) {
 export async function apiPost(path, body) {
   const r = await fetch(`${BASE}/api/${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(30000),
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000),
   });
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
