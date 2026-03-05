@@ -578,63 +578,126 @@ app.get('/api/plan/data', async (req, res) => {
 });
 
 app.get('/api/plan/actuals', async (req, res) => {
+  const t0=Date.now();
   try {
     const { year, store, seller, asin: af } = req.query;
     const yr = parseInt(year) || new Date().getFullYear();
     const accId = await storeToAccId(store);
     const debug = { yr, accId, seller, af, useProduct: useProduct(seller,af) };
-
-    // Source 1: Revenue, GP, Units, Sessions, Ads
-    let salesRows = [];
     const pF = pWhere(`${yr}-01-01`,`${yr}-12-31`,accId,seller,af);
-    if (useProduct(seller, af)) {
-      try {
-        salesRows = await q(`SELECT MONTH(p.date) as mn,
+
+    // Pre-fetch seller ASINs if needed (for impression filtering)
+    let selAsins = [];
+    if(seller && seller!=='All' && (!af || af==='All')){
+      selAsins=(await q('SELECT DISTINCT asin FROM asin WHERE seller=?',[seller],10000).catch(()=>[])).map(r=>r.asin);
+    }
+
+    // ═══ BATCH 1: Run main queries in PARALLEL (was sequential → ~3x faster) ═══
+    const impWhere=(prefix)=>{
+      let iw=`WHERE YEAR(${prefix}.startDate)=?`; const ip=[yr];
+      if(accId){iw+=` AND ${prefix}.accountId=?`;ip.push(accId);}
+      if(af && af!=='All'){iw+=` AND ${prefix}.asin=?`;ip.push(af);}
+      else if(selAsins.length){iw+=` AND ${prefix}.asin IN (${selAsins.map(()=>'?').join(',')})`;ip.push(...selAsins);}
+      return{iw,ip};
+    };
+
+    const [salesRes, adsRes, impRes, asinRes, asinImpRes, ucRes] = await Promise.allSettled([
+      // Q1: Monthly sales
+      (async()=>{
+        if(useProduct(seller,af)){
+          const r=await q(`SELECT MONTH(p.date) as mn,
+            SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp, SUM(COALESCE(p.netProfit,0)) as np,
+            SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
+            FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`,pF.p,45000);
+          debug.salesSource='product';debug.salesRows=r.length;return r;
+        } else {
+          const scF=scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
+          const r=await q(`SELECT MONTH(sc.date) as mn,
+            SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp, SUM(COALESCE(sc.netProfit,0)) as np,
+            SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions, SUM(ABS(${SC_ADS})) as ads
+            FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`,scF.p,45000);
+          debug.salesSource='sales';debug.salesRows=r.length;debug.salesTable=salesFrom();return r;
+        }
+      })(),
+      // Q2: Ads (only when using seller_board_sales)
+      (async()=>{
+        if(useProduct(seller,af)) return [];
+        return q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
+          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`,pF.p,45000);
+      })(),
+      // Q3: Monthly impressions
+      (async()=>{
+        const{iw,ip}=impWhere('isc');
+        return q(`SELECT MONTH(isc.startDate) as mn, SUM(COALESCE(isc.impressionCount,0)) as imp, SUM(COALESCE(isc.clickCount,0)) as clicks
+          FROM analytics_search_catalog_performance isc ${iw} GROUP BY MONTH(isc.startDate)`,ip,45000);
+      })(),
+      // Q4: ASIN breakdown (the main data query)
+      (async()=>{
+        const r=await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
           SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp, SUM(COALESCE(p.netProfit,0)) as np,
           SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
-          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
-        debug.salesSource='product';debug.salesRows=salesRows.length;
-      } catch(e1) { debug.salesErr=e1.message; console.warn('plan/actuals product query failed:', e1.message); }
-    } else {
+          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
+          LEFT JOIN (SELECT DISTINCT asin, brand_name FROM asin_plan) ap2 ON p.asin COLLATE utf8mb4_0900_ai_ci=ap2.asin
+          ${pF.w} GROUP BY p.asin, ap2.brand_name, a.seller, MONTH(p.date) ORDER BY gp DESC`,pF.p,45000);
+        debug.asinRows=r.length;return r;
+      })(),
+      // Q5: ASIN-level impressions
+      (async()=>{
+        const{iw,ip}=impWhere('asc2');
+        return q(`SELECT asc2.asin, MONTH(asc2.startDate) as mn,
+          SUM(COALESCE(asc2.impressionCount,0)) as imp, SUM(COALESCE(asc2.clickCount,0)) as clicks
+          FROM analytics_search_catalog_performance asc2 ${iw}
+          GROUP BY asc2.asin, MONTH(asc2.startDate)`,ip,45000);
+      })(),
+      // Q6: Unit costs from snapshot
+      (async()=>{
+        let ucw='WHERE FBAStock>0'; const ucp=[];
+        if(accId){ucw+=' AND accountId=?';ucp.push(accId);}
+        return q(`SELECT asin, SUM(COALESCE(stockValue,0)) as sv, SUM(FBAStock) as fba
+          FROM seller_board_stock ${ucw} GROUP BY asin`,ucp,10000);
+      })()
+    ]);
+
+    // Extract results (fulfilled → data, rejected → empty + log error)
+    const val=(r,label)=>{ if(r.status==='fulfilled') return r.value||[]; debug[label+'Err']=r.reason?.message; return []; };
+    const salesRows=val(salesRes,'sales');
+    const adsRows=val(adsRes,'ads');
+    const impRows=val(impRes,'imp');
+    const asinRows=val(asinRes,'asin');
+    const asinImpRows=val(asinImpRes,'asinImp');
+    const ucRows=val(ucRes,'uc');
+
+    // Build unit cost map
+    let unitCostMap = {};
+    ucRows.forEach(r=>{
+      const fba=parseInt(r.fba)||0;
+      if(fba>0) unitCostMap[r.asin]=(parseFloat(r.sv)||0)/fba;
+    });
+    debug.unitCostAsins=Object.keys(unitCostMap).length;
+
+    // ═══ Stock daily query (depends on unitCostMap, runs after batch 1) ═══
+    let asinStockMonthly = {};
+    if(Object.keys(unitCostMap).length>0){
       try {
-        const scF = scWhere(`${yr}-01-01`,`${yr}-12-31`,accId);
-        salesRows = await q(`SELECT MONTH(sc.date) as mn,
-          SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp, SUM(COALESCE(sc.netProfit,0)) as np,
-          SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.sessions,0)) as sessions, SUM(ABS(${SC_ADS})) as ads
-          FROM ${salesFrom()} ${scF.w} GROUP BY MONTH(sc.date)`, scF.p, 45000);
-        debug.salesSource='sales';debug.salesRows=salesRows.length;debug.salesTable=salesFrom();
-      } catch(e1) { debug.salesErr=e1.message; console.warn('plan/actuals sales query failed:', e1.message); }
+        let sdw='WHERE YEAR(d.date)=?'; const sdp=[yr];
+        if(accId){sdw+=' AND d.accountId=?';sdp.push(accId);}
+        const dailyRows = await q(`SELECT d.asin, MONTH(d.date) as mn,
+          SUBSTRING_INDEX(GROUP_CONCAT(d.FBAStock ORDER BY d.date DESC),',',1) as lastFba
+          FROM seller_board_stock_daily d ${sdw}
+          GROUP BY d.asin, MONTH(d.date)`, sdp, 30000);
+        dailyRows.forEach(r=>{
+          const key=r.asin, mn=r.mn, fba=parseInt(r.lastFba)||0;
+          const uc=unitCostMap[key]||0;
+          if(!asinStockMonthly[key]) asinStockMonthly[key]={};
+          asinStockMonthly[key][mn]={fba,sv:Math.round(fba*uc)};
+        });
+      } catch(e5) { debug.stockErr=e5.message; console.warn('stock estimate skipped:', e5.message); }
     }
 
-    // Source 2: Ads from seller_board_product (only needed when using seller_board_sales above)
-    let adsRows = [];
-    if (!useProduct(seller, af)) {
-      try {
-        adsRows = await q(`SELECT MONTH(p.date) as mn, SUM(ABS(${P_ADS})) as ads
-          FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${pF.w} GROUP BY MONTH(p.date)`, pF.p, 45000);
-      } catch(e2) { console.warn('plan/actuals ads query failed:', e2.message); }
-    }
-
-    // Source 3: Impressions + Clicks from analytics_search_catalog_performance
-    // This table HAS asin column — can filter directly by asin/seller.
-    let impRows = [];
-    try {
-      let iw='WHERE YEAR(isc.startDate)=?'; const ip=[yr];
-      if(accId){iw+=' AND isc.accountId=?';ip.push(accId);}
-      if(af && af!=='All'){iw+=' AND isc.asin=?';ip.push(af);}
-      else if(seller && seller!=='All'){
-        const selAsins=(await q('SELECT DISTINCT asin FROM asin WHERE seller=?',[seller],10000).catch(()=>[])).map(r=>r.asin);
-        if(selAsins.length){iw+=` AND isc.asin IN (${selAsins.map(()=>'?').join(',')})`;ip.push(...selAsins);}
-      }
-      impRows = await q(`SELECT MONTH(isc.startDate) as mn, SUM(COALESCE(isc.impressionCount,0)) as imp, SUM(COALESCE(isc.clickCount,0)) as clicks
-        FROM analytics_search_catalog_performance isc ${iw} GROUP BY MONTH(isc.startDate)`, ip, 45000);
-    } catch(e) { console.warn('analytics not available:', e.message); }
-
-    // Merge all into monthly
+    // ═══ Merge monthly data ═══
     const monthly = {};
     for(let m=1;m<=12;m++) monthly[m]={rv:0,gp:0,np:0,un:0,se:0,ad:0,im:0,clicks:0};
     salesRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.rv=parseFloat(r.revenue)||0;m.gp=parseFloat(r.gp)||0;m.np=parseFloat(r.np)||0;m.un=parseInt(r.units)||0;m.se=parseFloat(r.sessions)||0;m.ad=parseFloat(r.ads)||0;});
-    // Ads from separate query only when NOT using product table (avoids double-count)
     adsRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.ad=parseFloat(r.ads)||0;});
     impRows.forEach(r=>{const m=monthly[r.mn];if(!m)return;m.im=parseFloat(r.imp)||0;m.clicks=parseFloat(r.clicks)||0;});
 
@@ -647,73 +710,7 @@ app.get('/api/plan/actuals', async (req, res) => {
         cra:Math.round(cr*10000)/10000, cta:Math.round(ctr*10000)/10000});
     }
 
-    // ASIN breakdown from seller_board_product
-    let asinRows = [];
-    try {
-      asinRows = await q(`SELECT p.asin, ap2.brand_name as planBrand, a.seller, MONTH(p.date) as mn,
-      SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp, SUM(COALESCE(p.netProfit,0)) as np,
-      SUM(${P_UNITS}) as units, SUM(COALESCE(p.sessions,0)) as sessions, SUM(ABS(${P_ADS})) as ads
-      FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
-      LEFT JOIN (SELECT DISTINCT asin, brand_name FROM asin_plan) ap2 ON p.asin COLLATE utf8mb4_0900_ai_ci=ap2.asin
-      ${pF.w} GROUP BY p.asin, ap2.brand_name, a.seller, MONTH(p.date) ORDER BY gp DESC`, pF.p, 45000);
-    } catch(e3) { debug.asinErr=e3.message; console.warn('plan/actuals asin query failed:', e3.message); }
-    debug.asinRows=asinRows.length;
-
-    // ASIN-level impressions + clicks from analytics_search_catalog_performance (has asin column)
-    let asinImpMap = {}; // { asin: { month: { imp, clicks } } }
-    try {
-      let aiw = 'WHERE YEAR(asc2.startDate)=?'; const aip = [yr];
-      if(accId){aiw+=' AND asc2.accountId=?';aip.push(accId);}
-      if(af && af!=='All'){aiw+=' AND asc2.asin=?';aip.push(af);}
-      else if(seller && seller!=='All'){
-        const selAsins=(await q('SELECT DISTINCT asin FROM asin WHERE seller=?',[seller],10000).catch(()=>[])).map(r=>r.asin);
-        if(selAsins.length){aiw+=` AND asc2.asin IN (${selAsins.map(()=>'?').join(',')})`;aip.push(...selAsins);}
-      }
-      const asinImpRows = await q(`SELECT asc2.asin, MONTH(asc2.startDate) as mn,
-        SUM(COALESCE(asc2.impressionCount,0)) as imp, SUM(COALESCE(asc2.clickCount,0)) as clicks
-        FROM analytics_search_catalog_performance asc2 ${aiw}
-        GROUP BY asc2.asin, MONTH(asc2.startDate)`, aip, 45000);
-      asinImpRows.forEach(r=>{
-        if(!asinImpMap[r.asin]) asinImpMap[r.asin]={};
-        asinImpMap[r.asin][r.mn]={imp:parseInt(r.imp)||0,clicks:parseInt(r.clicks)||0};
-      });
-    } catch(e4) { console.warn('plan/actuals asin impressions query failed:', e4.message); }
-
-    // Estimated Stock Value per ASIN per month
-    // unit_cost from snapshot × latest FBAStock per month from daily
-    let unitCostMap = {}; // { asin: unit_cost }
-    let asinStockMonthly = {}; // { asin: { mn: { fba, sv } } }
-    try {
-      // Step 1: unit costs from snapshot (fast, small table)
-      let ucw='WHERE FBAStock>0'; const ucp=[];
-      if(accId){ucw+=' AND accountId=?';ucp.push(accId);}
-      const ucRows = await q(`SELECT asin, SUM(COALESCE(stockValue,0)) as sv, SUM(FBAStock) as fba
-        FROM seller_board_stock ${ucw} GROUP BY asin`, ucp, 10000);
-      ucRows.forEach(r=>{
-        const fba=parseInt(r.fba)||0;
-        if(fba>0) unitCostMap[r.asin]=(parseFloat(r.sv)||0)/fba;
-      });
-      debug.unitCostAsins=Object.keys(unitCostMap).length;
-
-      // Step 2: latest FBAStock per ASIN per month (simple approach: get max date per month first)
-      if(Object.keys(unitCostMap).length>0){
-        let sdw='WHERE YEAR(d.date)=?'; const sdp=[yr];
-        if(accId){sdw+=' AND d.accountId=?';sdp.push(accId);}
-        // Simple: just use AVG or last-day-of-month FBAStock
-        // Using MAX(date) per month approach but with simpler query
-        const dailyRows = await q(`SELECT d.asin, MONTH(d.date) as mn, 
-          SUBSTRING_INDEX(GROUP_CONCAT(d.FBAStock ORDER BY d.date DESC),',',1) as lastFba
-          FROM seller_board_stock_daily d ${sdw}
-          GROUP BY d.asin, MONTH(d.date)`, sdp, 30000);
-        dailyRows.forEach(r=>{
-          const key=r.asin, mn=r.mn, fba=parseInt(r.lastFba)||0;
-          const uc=unitCostMap[key]||0;
-          if(!asinStockMonthly[key]) asinStockMonthly[key]={};
-          asinStockMonthly[key][mn]={fba,sv:Math.round(fba*uc)};
-        });
-      }
-    } catch(e5) { debug.stockErr=e5.message; console.warn('stock estimate skipped:', e5.message); }
-
+    // ═══ Build ASIN breakdown ═══
     const asinData={};
     asinRows.forEach(r=>{
       const key=r.asin, mn=r.mn;
@@ -724,7 +721,12 @@ app.get('/api/plan/actuals', async (req, res) => {
       md.un+=parseInt(r.units)||0;md.se+=parseFloat(r.sessions)||0;
       md.cr=md.se>0?md.un/md.se:0;
     });
-    // Merge impressions/clicks into asinData
+    // Merge ASIN impressions
+    const asinImpMap={};
+    asinImpRows.forEach(r=>{
+      if(!asinImpMap[r.asin]) asinImpMap[r.asin]={};
+      asinImpMap[r.asin][r.mn]={imp:parseInt(r.imp)||0,clicks:parseInt(r.clicks)||0};
+    });
     for(const [asin,months] of Object.entries(asinImpMap)){
       if(!asinData[asin]) continue;
       for(const [mn,imp] of Object.entries(months)){
@@ -734,7 +736,7 @@ app.get('/api/plan/actuals', async (req, res) => {
         asinData[asin].months[mn].ct=imp.imp>0?imp.clicks/imp.imp:0;
       }
     }
-    // Merge estimated stock value per month into asinData
+    // Merge stock values
     for(const [asin,months] of Object.entries(asinStockMonthly)){
       if(!asinData[asin]) asinData[asin]={brand:'',seller:'',months:{}};
       for(const [mn,stk] of Object.entries(months)){
@@ -748,7 +750,6 @@ app.get('/api/plan/actuals', async (req, res) => {
       let latestSv=0;
       const monthNums=Object.keys(d.months).map(Number).sort((a,b)=>b-a);
       Object.values(d.months).forEach(m=>{t.rv+=m.rv;t.gp+=m.gp;t.np+=m.np;t.ad+=m.ad;t.un+=m.un;t.se+=m.se;t.im+=m.im||0;t.clicks+=m.clicks||0;});
-      // Use latest month's sv as total (most recent estimate)
       if(monthNums.length&&d.months[monthNums[0]]?.sv) latestSv=d.months[monthNums[0]].sv;
       const cr=t.se>0?t.un/t.se:0;
       const ctr=t.im>0?t.clicks/t.im:0;
@@ -759,8 +760,9 @@ app.get('/api/plan/actuals', async (req, res) => {
 
     debug.asinBreakdownCount=asinBreakdown.length;
     debug.stockAsins=Object.keys(asinStockMonthly).length;
+    debug.ms=Date.now()-t0;
     res.json({monthly:monthlyArr,asinBreakdown,_debug:debug});
-  } catch (e) { console.error('plan/actuals:', e.message); res.status(500).json({error:e.message}); }
+  } catch (e) { console.error('plan/actuals:', e.message); res.status(500).json({error:e.message,_debug:{ms:Date.now()-t0}}); }
 });
 
 /* ═══════════ OPS DAILY ═══════════ */
