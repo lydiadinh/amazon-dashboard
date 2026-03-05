@@ -677,6 +677,42 @@ app.get('/api/plan/actuals', async (req, res) => {
       });
     } catch(e4) { console.warn('plan/actuals asin impressions query failed:', e4.message); }
 
+    // Estimated Stock Value per ASIN per month
+    // Step 1: unit_cost = stockValue / FBAStock from snapshot (seller_board_stock)
+    // Step 2: FBAStock per month from seller_board_stock_daily (latest date each month)
+    // Step 3: estimated_sv = FBAStock_monthly × unit_cost
+    let unitCostMap = {}; // { asin: unit_cost }
+    let asinStockMonthly = {}; // { asin: { mn: { fba, sv } } }
+    try {
+      // Step 1: unit costs from snapshot
+      let ucw='WHERE FBAStock>0'; const ucp=[];
+      if(accId){ucw+=' AND accountId=?';ucp.push(accId);}
+      const ucRows = await q(`SELECT asin, SUM(COALESCE(stockValue,0)) as sv, SUM(FBAStock) as fba
+        FROM seller_board_stock ${ucw} GROUP BY asin`, ucp, 10000);
+      ucRows.forEach(r=>{
+        const fba=parseInt(r.fba)||0;
+        if(fba>0) unitCostMap[r.asin]=(parseFloat(r.sv)||0)/fba;
+      });
+
+      // Step 2: FBAStock per ASIN per month from daily (latest date per month)
+      if(Object.keys(unitCostMap).length>0){
+        let sdw='WHERE YEAR(date)=?'; const sdp=[yr];
+        if(accId){sdw+=' AND accountId=?';sdp.push(accId);}
+        const dailyRows = await q(`SELECT d.asin, MONTH(d.date) as mn, SUM(d.FBAStock) as fba
+          FROM seller_board_stock_daily d
+          INNER JOIN (SELECT asin, accountId, MONTH(date) as mn, MAX(date) as maxd
+            FROM seller_board_stock_daily ${sdw} GROUP BY asin, accountId, MONTH(date)) mx
+          ON d.asin=mx.asin AND d.accountId=mx.accountId AND d.date=mx.maxd
+          ${sdw} GROUP BY d.asin, MONTH(d.date)`, [...sdp,...sdp], 30000);
+        dailyRows.forEach(r=>{
+          const key=r.asin, mn=r.mn, fba=parseInt(r.fba)||0;
+          const uc=unitCostMap[key]||0;
+          if(!asinStockMonthly[key]) asinStockMonthly[key]={};
+          asinStockMonthly[key][mn]={fba,sv:Math.round(fba*uc)};
+        });
+      }
+    } catch(e5) { console.warn('plan/actuals stock estimate skipped:', e5.message); }
+
     const asinData={};
     asinRows.forEach(r=>{
       const key=r.asin, mn=r.mn;
@@ -689,21 +725,34 @@ app.get('/api/plan/actuals', async (req, res) => {
     });
     // Merge impressions/clicks into asinData
     for(const [asin,months] of Object.entries(asinImpMap)){
-      if(!asinData[asin]) continue; // only merge if ASIN has sales data
+      if(!asinData[asin]) continue;
       for(const [mn,imp] of Object.entries(months)){
-        if(!asinData[asin].months[mn]) asinData[asin].months[mn]={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,clicks:0,cr:0,ct:0};
+        if(!asinData[asin].months[mn]) asinData[asin].months[mn]={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,clicks:0,cr:0,ct:0,sv:0};
         asinData[asin].months[mn].im=imp.imp;
         asinData[asin].months[mn].clicks=imp.clicks;
         asinData[asin].months[mn].ct=imp.imp>0?imp.clicks/imp.imp:0;
       }
     }
+    // Merge estimated stock value per month into asinData
+    for(const [asin,months] of Object.entries(asinStockMonthly)){
+      if(!asinData[asin]) asinData[asin]={brand:'',seller:'',months:{}};
+      for(const [mn,stk] of Object.entries(months)){
+        if(!asinData[asin].months[mn]) asinData[asin].months[mn]={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,clicks:0,cr:0,ct:0,sv:0};
+        asinData[asin].months[mn].sv=stk.sv;
+      }
+    }
 
     const asinBreakdown=Object.entries(asinData).map(([asin,d])=>{
       const t={rv:0,gp:0,np:0,ad:0,un:0,se:0,im:0,clicks:0};
+      let latestSv=0;
+      const monthNums=Object.keys(d.months).map(Number).sort((a,b)=>b-a);
       Object.values(d.months).forEach(m=>{t.rv+=m.rv;t.gp+=m.gp;t.np+=m.np;t.ad+=m.ad;t.un+=m.un;t.se+=m.se;t.im+=m.im||0;t.clicks+=m.clicks||0;});
+      // Use latest month's sv as total (most recent estimate)
+      if(monthNums.length&&d.months[monthNums[0]]?.sv) latestSv=d.months[monthNums[0]].sv;
       const cr=t.se>0?t.un/t.se:0;
       const ctr=t.im>0?t.clicks/t.im:0;
       return{a:asin,br:d.brand,sl:d.seller,ra:t.rv,ga:t.gp,na:t.np,aa:t.ad,ua:t.un,sa:t.se,ia:t.im,
+        sv:latestSv,
         cra:Math.round(cr*10000)/10000,cta:Math.round(ctr*10000)/10000,months:d.months};
     }).sort((a,b)=>b.ga-a.ga);
 
