@@ -450,28 +450,49 @@ app.get('/api/inventory/by-shop', async (req, res) => {
     let accFilter = ''; const accParams = [];
     if (accId) { accFilter = ' AND accountId = ?'; accParams.push(accId); }
 
-    // FBA Stock per shop from seller_board_stock (snapshot table, no date column)
+    // FBA Stock per shop from seller_board_stock (snapshot)
     let stockMap = {};
     try {
       (await q(`SELECT accountId, SUM(FBAStock) as fba FROM seller_board_stock WHERE 1=1${accFilter} GROUP BY accountId`, accParams))
         .forEach(r => { stockMap[r.accountId] = parseInt(r.fba) || 0; });
     } catch (e) { /* ok */ }
 
-    const inv = await q(`SELECT f.accountId, SUM(CAST(f.available AS SIGNED)) as avail, SUM(COALESCE(f.inboundQuantity,0)) as inb, SUM(COALESCE(f.totalReservedQuantity,0)) as res, COUNT(DISTINCT CASE WHEN f.daysOfSupply<=7 THEN f.sku END) as crit, AVG(COALESCE(f.sellThrough,0)) as st, AVG(COALESCE(f.daysOfSupply,0)) as dos FROM fba_iventory_planning f WHERE f.date=(SELECT MAX(date) FROM fba_iventory_planning)${accFilter} GROUP BY f.accountId`, accParams).catch(()=>[]);
-    const ids = new Set(inv.map(r=>r.accountId));
-    let stk = []; try { stk = await q(`SELECT accountId, SUM(FBAStock) as fba FROM seller_board_stock_daily WHERE date=(SELECT MAX(date) FROM seller_board_stock_daily)${accFilter} GROUP BY accountId`, accParams); } catch(e){}
-    const combined = inv.map(r=>{
-      const fbaFromStock = stockMap[r.accountId];
-      const fbaFromPlanning = (parseInt(r.avail)||0) + (parseInt(r.res)||0);
+    // Units sold last 30 days per shop (for sell-through & days of supply calc)
+    let unitsMap = {}; // { accountId: { units, days } }
+    try {
+      const salesRows = await q(`SELECT p.accountId, SUM(${P_UNITS}) as units, DATEDIFF(MAX(p.date),MIN(p.date))+1 as days
+        FROM seller_board_product p WHERE p.date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)${accFilter}
+        GROUP BY p.accountId`, accParams, 15000);
+      salesRows.forEach(r => { unitsMap[r.accountId] = { units: parseInt(r.units)||0, days: parseInt(r.days)||1 }; });
+    } catch(e) { /* ok */ }
+
+    // Inventory planning data (for inbound, reserved, critical SKUs)
+    const inv = await q(`SELECT f.accountId, SUM(CAST(f.available AS SIGNED)) as avail, SUM(COALESCE(f.inboundQuantity,0)) as inb, SUM(COALESCE(f.totalReservedQuantity,0)) as res, COUNT(DISTINCT CASE WHEN f.daysOfSupply<=7 THEN f.sku END) as crit
+      FROM fba_iventory_planning f WHERE f.date=(SELECT MAX(date) FROM fba_iventory_planning)${accFilter}
+      GROUP BY f.accountId`, accParams).catch(()=>[]);
+
+    // Combine all data
+    const allAccIds = new Set([...Object.keys(stockMap).map(Number), ...inv.map(r=>r.accountId)]);
+    const combined = [...allAccIds].map(aid => {
+      const fba = stockMap[aid] || 0;
+      const invRow = inv.find(r => r.accountId === aid) || {};
+      const sales = unitsMap[aid] || { units: 0, days: 30 };
+      const avgDaily = sales.days > 0 ? sales.units / sales.days : 0;
+      // Sell-Through = Units Sold / (Units Sold + FBA Stock)
+      const sellThrough = (sales.units + fba) > 0 ? sales.units / (sales.units + fba) : 0;
+      // Days of Supply = FBA Stock / Avg Daily Sales
+      const daysOfSupply = avgDaily > 0 ? Math.round(fba / avgDaily) : (fba > 0 ? 999 : 0);
       return {
-        shop:shopMap[r.accountId]||`Account ${r.accountId}`,
-        fbaStock: fbaFromStock != null ? fbaFromStock : fbaFromPlanning,
-        inbound:parseInt(r.inb)||0, reserved:parseInt(r.res)||0,
-        criticalSkus:parseInt(r.crit)||0, sellThrough:parseFloat(r.st)||0, daysOfSupply:parseFloat(r.dos)||0
+        shop: shopMap[aid] || `Account ${aid}`,
+        fbaStock: fba,
+        inbound: parseInt(invRow.inb) || 0,
+        reserved: parseInt(invRow.res) || 0,
+        criticalSkus: parseInt(invRow.crit) || 0,
+        sellThrough: Math.round(sellThrough * 10000) / 10000,
+        daysOfSupply
       };
-    });
-    stk.forEach(r=>{if(!ids.has(r.accountId))combined.push({shop:shopMap[r.accountId]||`Account ${r.accountId}`,fbaStock:parseInt(r.fba)||0,inbound:0,reserved:0,criticalSkus:0,sellThrough:0,daysOfSupply:0});});
-    combined.sort((a,b)=>b.fbaStock-a.fbaStock);
+    }).filter(r => r.fbaStock > 0 || r.sellThrough > 0);
+    combined.sort((a, b) => b.fbaStock - a.fbaStock);
     res.json(combined);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
