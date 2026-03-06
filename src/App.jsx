@@ -323,8 +323,10 @@ function TeamPage({t,fSeller,fDaily,asinPlanBkData,onAsinClick}){
         return{...r,ga:md.ga||0,gp:md.gp||0,na:md.na||0,np:md.np||0,ra:md.ra||0,rp:md.rp||0,aa:md.aa||0,ap:md.ap||0,ua:md.ua||0,up:md.up||0,sa:md.sa||0,sp:md.sp||0,ia:md.ia||0,ip:md.ip||0,sv:md.sv||0,cra:md.cra||0,crp:md.crp||0,cta:md.cta||0,ctp:md.ctp||0};
       }).filter(r=>Math.abs(r.ga||0)+Math.abs(r.gp||0)+Math.abs(r.ra||0)+Math.abs(r.rp||0)+Math.abs(r.aa||0)+Math.abs(r.ap||0)+Math.abs(r.ua||0)+Math.abs(r.up||0)+Math.abs(r.sa||0)+Math.abs(r.sp||0)>0);
     }
-    // Sort by seller name first, then GP desc within each seller
+    // Sort by seller name first, then GP desc within each seller (empty seller → bottom)
     return[...filtered].sort((a,b)=>{
+      const aEmpty=!a.sl,bEmpty=!b.sl;
+      if(aEmpty!==bEmpty) return aEmpty?1:-1;
       const sc=(a.sl||"").localeCompare(b.sl||"");
       return sc!==0?sc:(b.ga||0)-(a.ga||0);
     });
@@ -338,7 +340,7 @@ function TeamPage({t,fSeller,fDaily,asinPlanBkData,onAsinClick}){
       if(!map[sl])map[sl]={sl,ga:0,gp:0,ra:0,rp:0,aa:0,ap:0,ua:0,up:0,sv:0,cnt:0};
       const s=map[sl];s.ga+=r.ga||0;s.gp+=r.gp||0;s.ra+=r.ra||0;s.rp+=r.rp||0;s.aa+=r.aa||0;s.ap+=r.ap||0;s.ua+=r.ua||0;s.up+=r.up||0;s.sv+=r.sv||0;s.cnt++;
     });
-    return Object.values(map).map(s=>({...s,margin:sellerMargins[s.sl]?.margin||0})).sort((a,b)=>(b.ga||0)-(a.ga||0));
+    return Object.values(map).map(s=>({...s,margin:sellerMargins[s.sl]?.margin||0})).sort((a,b)=>{if(a.sl==="Unknown"&&b.sl!=="Unknown")return 1;if(b.sl==="Unknown"&&a.sl!=="Unknown")return-1;return(b.ga||0)-(a.ga||0);});
   },[asinData,sellerMargins]);
   const THDSL=["Seller","⭐ GP","REVENUE","ADS","UNITS","MARGIN","ASINs","STOCK VALUE"];
   const THDASIN=["ASIN","Seller","Brand","⭐ GP","REVENUE","ADS","UNITS","STOCK VALUE"];
