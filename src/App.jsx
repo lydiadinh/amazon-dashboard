@@ -110,7 +110,7 @@ function StockModal({asin,t,onClose}){
             </div>
             <div style={{flex:"1 1 160px"}}>
               <div style={{fontSize:9,color:t.textMuted,textTransform:"uppercase",letterSpacing:1}}>Stock Value (snapshot)</div>
-              <div style={{fontSize:28,fontWeight:800,color:t.text}}>{$(cur.stockValue)}</div>
+              <div style={{fontSize:28,fontWeight:800,color:t.text}}>{$2(cur.stockValue)}</div>
             </div>
             <div style={{flex:"1 1 160px"}}>
               <div style={{fontSize:9,color:t.textMuted,textTransform:"uppercase",letterSpacing:1}}>Sales velocity (units/day)</div>
