@@ -502,7 +502,10 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
       const rv=Math.round(avgRev*growthRate*seasonal[mi]*(0.95+i*0.02));
       fcMap[MS[mi]]={forecast:rv,gpF:Math.round(rv*gpMargin*(0.9+i*0.03)),
         unitsF:Math.round(last.ua*(rv/last.ra)),sessF:Math.round(last.sa*(rv/last.ra)*0.95),
-        lo:Math.round(rv*0.82),hi:Math.round(rv*1.18)};
+        lo:Math.round(rv*0.82),hi:Math.round(rv*1.18),
+        gpLo:Math.round(rv*gpMargin*(0.9+i*0.03)*0.75),gpHi:Math.round(rv*gpMargin*(0.9+i*0.03)*1.25),
+        unitsLo:Math.round(last.ua*(rv/last.ra)*0.82),unitsHi:Math.round(last.ua*(rv/last.ra)*1.18),
+        sessLo:Math.round(last.sa*(rv/last.ra)*0.85),sessHi:Math.round(last.sa*(rv/last.ra)*1.15)};
     }
 
     // Build result: actual months + merge forecast into existing + add future months
@@ -783,7 +786,7 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
       </div>
 
       <Cd2>
-        <SH2 title="Actual vs Forecast"/>
+        <SH2 title="Actual vs Forecast" sub="Jan-Feb = basis months (actual data used to calculate forecast). Mar onwards = forecast with ±18% confidence range."/>
         <ResponsiveContainer width="100%" height={280}>
           <ComposedChart data={forecast}>
             <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/>
@@ -791,8 +794,8 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
             <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>pMetric==="units"||pMetric==="sessions"?N(v):$s(v)}/>
             <Tooltip content={<CT t={t}/>}/>
             <Legend wrapperStyle={{fontSize:10}}/>
-            {pMetric==="revenue"&&<Area dataKey="hi" name="Best Case" stroke="none" fill={t.primary} fillOpacity={0.06}/>}
-            {pMetric==="revenue"&&<Area dataKey="lo" name="Worst Case" stroke="none" fill={t.primary} fillOpacity={0.06}/>}
+            <Area dataKey={pMetric==="revenue"?"hi":pMetric==="gp"?"gpHi":pMetric==="units"?"unitsHi":"sessHi"} name="Best Case" stroke={t.green} strokeWidth={1} strokeDasharray="4 2" fill={t.green} fillOpacity={0.04}/>
+            <Area dataKey={pMetric==="revenue"?"lo":pMetric==="gp"?"gpLo":pMetric==="units"?"unitsLo":"sessLo"} name="Worst Case" stroke={t.red} strokeWidth={1} strokeDasharray="4 2" fill={t.red} fillOpacity={0.04}/>
             <Bar dataKey={pMetric==="revenue"?"actual":pMetric} name="Actual" fill={t.primary} radius={[4,4,0,0]}/>
             <Bar dataKey={pMetric==="revenue"?"forecast":pMetric==="gp"?"gpF":pMetric==="units"?"unitsF":"sessF"} name="Forecast" fill={t.orange} fillOpacity={0.4} radius={[4,4,0,0]} strokeDasharray="4 2" stroke={t.orange}/>
           </ComposedChart>
