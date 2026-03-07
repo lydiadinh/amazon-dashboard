@@ -406,9 +406,15 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
   const dayCount=fDaily?.length||0;
 
   // ═══ COMPUTE DIAGNOSTIC DATA ═══
+  const MS2=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const monthly=useMemo(()=>{
     if(!monthPlanData?.length)return[];
-    return monthPlanData.filter(m=>m.ra>0).map(m=>({...m}));
+    return monthPlanData.filter(m=>m.ra>0).map(m=>{
+      // Ensure mn exists — derive from m (month name) if missing
+      let mn=m.mn;
+      if(!mn&&m.m){const idx=MS2.indexOf(m.m);if(idx>=0)mn=idx+1;}
+      return{...m,mn};
+    });
   },[monthPlanData]);
 
   const mom=useMemo(()=>{
@@ -761,8 +767,8 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
     {layer==="predictive"&&<div>
       <Cd2>
         <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Forecast Engine</div>
-        <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>Revenue Forecast: {$(forecast.find(f=>f.forecast)?.forecast)||"Insufficient data"}</div>
-        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Method: Weighted Moving Average | Based on {monthly.filter(m=>!(m.mn===(new Date().getMonth()+1)&&new Date().getDate()<20)).length} complete months | Next: {forecast.find(f=>f.forecast)?.m||"—"}</div>
+        <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>Revenue Forecast: {$(forecast.find(f=>f.forecast)?.forecast)||"Calculating..."}</div>
+        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Method: Weighted Moving Average | {monthly.length} months of data | Forecasting: {forecast.filter(f=>f.forecast).map(f=>f.m).join(", ")||"—"}</div>
         <div style={{marginTop:8,padding:"8px 12px",background:t.primaryLight,borderRadius:8,fontSize:11,color:t.primary}}>
           Forecast accuracy improves with more data. Seasonal model available after 6+ months of history.
         </div>
@@ -1284,10 +1290,10 @@ export default function App(){
   // Filter visibility per page
   // Filter visibility: Exec=Brand+Seller, Plan=Brand+Seller+ASIN, Prod/Shop/Team/Daily=Store+Seller+ASIN, Inv=Store
   // "Brand" = same as Store (account.shop), just different label
-  const showShopFilter=["exec","prod","shops","team","daily","inv","plan"].includes(pg);
+  const showShopFilter=["exec","prod","shops","team","daily","inv","plan","analytics"].includes(pg);
   const shopLabel="All Shops";
-  const showSeller=["exec","prod","shops","team","plan","daily"].includes(pg);
-  const showAsin=["plan","prod","shops","team","daily"].includes(pg);
+  const showSeller=["exec","prod","shops","team","plan","daily","analytics"].includes(pg);
+  const showAsin=["plan","prod","shops","team","daily","analytics"].includes(pg);
 
   if(dbConnecting)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:t.bg}}><Spinner t={t} text="Connecting..."/></div>;
 
@@ -1312,7 +1318,7 @@ export default function App(){
         </div>
         {/* FILTER BAR */}
         {(!mob||mobileFilters)&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          {["exec","prod","shops","team","daily"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
+          {["exec","prod","shops","team","daily","analytics"].includes(pg)&&<><DateInput label="Start" value={sd} onChange={v=>{setSd(v);setActivePeriod(null)}} t={t}/><DateInput label="End" value={ed} onChange={v=>{setEd(v);setActivePeriod(null)}} t={t}/><PeriodBtns onSelect={(s,e,l)=>{setSd(s);setEd(e);setActivePeriod(l)}} active={activePeriod} t={t} refDate={defaultEnd}/><ClearBtn onClick={clearDates} t={t}/></>}
           {pg==="plan"&&<><Sel value={planYear} onChange={setPlanYear} options={planYearOpts} label="All Years" t={t}/></>}
           {showShopFilter&&<Sel value={store} onChange={setStore} options={opts.stores} label={shopLabel} t={t}/>}
           {showSeller&&<Sel value={seller} onChange={setSeller} options={opts.sellers} label="All Sellers" t={t}/>}
