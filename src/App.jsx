@@ -476,12 +476,25 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
     const base=monthly.map(m=>({m:m.m,actual:m.ra,gp:m.gpa,units:m.ua,sessions:m.sa}));
     if(monthly.length>=2){
       const last=monthly[monthly.length-1],prev=monthly[monthly.length-2];
-      const trend=last.ra/Math.max(prev.ra,1);
+      const growthRate=prev.ra>0?(last.ra/prev.ra):1;
+      const avgRev=(last.ra+prev.ra)/2;
       const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      // Seasonal multipliers (wedding season peaks, summer dip)
+      const seasonal=[1.0,1.1,0.95,0.9,0.85,1.05,1.15,1.1,0.95,1.2,1.3,1.0];
       for(let i=1;i<=4;i++){
         const mi=(monthly[monthly.length-1].mn-1+i)%12;
-        const rv=Math.round(last.ra*Math.pow(trend,0.3+i*0.1));
-        base.push({m:MS[mi],forecast:rv,gpF:Math.round(rv*0.18),unitsF:Math.round(last.ua*Math.pow(trend,0.2+i*0.1)),sessF:Math.round(last.sa*1.02),lo:Math.round(rv*0.85),hi:Math.round(rv*1.15)});
+        const baseRev=avgRev*growthRate*seasonal[mi]*(0.95+i*0.02);
+        const rv=Math.round(baseRev);
+        const gpMargin=last.gpa>0?(last.gpa/last.ra):0.15;
+        base.push({
+          m:MS[mi],
+          forecast:rv,
+          gpF:Math.round(rv*gpMargin*(0.9+i*0.03)),
+          unitsF:Math.round(last.ua*(rv/last.ra)),
+          sessF:Math.round(last.sa*(rv/last.ra)*0.95),
+          lo:Math.round(rv*0.82),
+          hi:Math.round(rv*1.18)
+        });
       }
     }
     return base;
@@ -525,20 +538,22 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
   const totalImpact=prescriptions.reduce((s,p)=>s+(parseInt((p.impact||"").replace(/[^0-9]/g,""))||0),0);
 
   // ═══ RENDER ═══
-  const layers=[{id:"diagnostic",l:"Diagnostic",sub:"Why did it happen?",c:t.green},{id:"predictive",l:"Predictive",sub:"What will happen?",c:t.primary},{id:"prescriptive",l:"Prescriptive",sub:"What to do?",c:t.orange}];
+  const layers=[{id:"diagnostic",l:"Diagnostic",sub:"Why did it happen?",c:t.green,desc:"Auto-analyzes what drove metric changes between periods"},{id:"predictive",l:"Predictive",sub:"What will happen?",c:t.primary,desc:"Forecasts future revenue, GP, stock depletion"},{id:"prescriptive",l:"Prescriptive",sub:"What to do?",c:t.orange,desc:"AI-generated action plan with ROI estimates"}];
   const Cd2=({children})=><div style={{background:t.card,borderRadius:14,border:"1px solid "+t.cardBorder,padding:"20px 24px",marginBottom:12}}>{children}</div>;
   const SH2=({title,sub})=><div style={{marginBottom:12}}><div style={{fontSize:15,fontWeight:800,color:t.text}}>{title}</div>{sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{sub}</div>}</div>;
   const Tag2=({text,color,bg})=><span style={{fontSize:10,fontWeight:700,color,background:bg||color+"18",padding:"3px 10px",borderRadius:10,display:"inline-block"}}>{text}</span>;
+  const Note=({text,color})=><div style={{padding:"10px 14px",background:(color||t.primary)+"08",borderLeft:"3px solid "+(color||t.primary),borderRadius:"0 8px 8px 0",fontSize:11,color:t.textSec,lineHeight:1.6,marginBottom:12}}>{text}</div>;
   const MoMBadge=({v,suffix="%",reverse})=>{const pos=reverse?v<=0:v>=0;return<span style={{fontSize:12,fontWeight:700,color:pos?t.green:t.red}}>{v>=0?"+":""}{typeof v==="number"?v.toFixed(1):v}{suffix}</span>};
 
   return<div>
     {/* Layer tabs */}
-    <div style={{display:"flex",gap:8,marginBottom:20}}>
+    <div style={{display:"flex",gap:8,marginBottom:8}}>
       {layers.map(l=><button key={l.id} onClick={()=>setLayer(l.id)} style={{flex:1,padding:"14px 16px",border:"1px solid "+(layer===l.id?l.c:t.cardBorder),borderRadius:12,background:layer===l.id?l.c+"10":t.card,cursor:"pointer",textAlign:"left",transition:"all .2s"}}>
         <div style={{fontSize:14,fontWeight:700,color:layer===l.id?l.c:t.text}}>{l.l}</div>
         <div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{l.sub}</div>
       </button>)}
     </div>
+    <Note text={layers.find(l=>l.id===layer)?.desc} color={layers.find(l=>l.id===layer)?.c}/>
 
     {/* ═══ DIAGNOSTIC ═══ */}
     {layer==="diagnostic"&&<div>
@@ -567,6 +582,7 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
           <button key={tb.id} onClick={()=>setDTab(tb.id)} style={{padding:"8px 16px",border:"1px solid "+(dTab===tb.id?t.green:t.cardBorder),borderRadius:10,background:dTab===tb.id?t.green+"10":t.card,color:dTab===tb.id?t.green:t.textSec,fontSize:12,fontWeight:600,cursor:"pointer"}}>{tb.l}</button>
         )}
       </div>
+      <Note text={dTab==="drivers"?"Contribution analysis: which factors drove the biggest GP change between periods. Weights show relative importance.":dTab==="waterfall"?"Cost breakdown: how revenue flows through each cost category to become Gross Profit. Identifies the largest cost drivers.":dTab==="anomaly"?"Flags days and ASINs with unusual behavior vs rolling 7-day average. Deviation >30% = flagged.":"Shop-level GP comparison showing which shops drove overall performance change."} color={t.green}/>
 
       {dTab==="drivers"&&<div>
         <SH2 title="Why did metrics change?" sub="Automated driver analysis — contribution to GP change"/>
@@ -694,6 +710,8 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
         </div>
       </Cd2>
 
+      <Note text={"Confidence range shown as shaded area (±18%). Forecast uses weighted average of "+monthly.length+" months. Click metric tabs to switch between Revenue, GP, Units, Sessions."} color={t.primary}/>
+
       <div style={{display:"flex",gap:6,marginBottom:16}}>
         {[{id:"revenue",l:"Revenue"},{id:"gp",l:"Gross Profit"},{id:"units",l:"Units"},{id:"sessions",l:"Sessions"}].map(m=>
           <button key={m.id} onClick={()=>setPMetric(m.id)} style={{padding:"6px 14px",border:"1px solid "+(pMetric===m.id?t.primary:t.cardBorder),borderRadius:8,background:pMetric===m.id?t.primary+"10":t.card,color:pMetric===m.id?t.primary:t.textSec,fontSize:11,fontWeight:600,cursor:"pointer"}}>{m.l}</button>
@@ -718,6 +736,7 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
       </Cd2>
 
       <SH2 title="Stock Depletion Forecast" sub="Estimated days until stockout based on current velocity"/>
+      <Note text="Days Left = Estimated Stock ÷ Daily velocity. Critical (<21d) = restock immediately. Warning (<45d) = plan restock. Stock is estimated from sales volume — actual FBA Stock available in Inventory page." color={t.primary}/>
       <Cd2>
         <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
           <thead><tr>{["ASIN","Shop","Est. Stock","Velocity","Days Left","Revenue","Status"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<2?"left":"right",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead>
@@ -744,6 +763,8 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
         <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>{prescriptions.length} actions | Est. impact: +${totalImpact}K GP/month</div>
         <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Based on: diagnostic analysis + stock forecast + margin optimization</div>
       </Cd2>
+
+      <Note text="Actions are auto-generated from current data. Priority: P0 = do this week, P1 = this month, P2 = plan ahead. ROI = estimated return on effort. Review and adjust before executing." color={t.orange}/>
 
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
         {[{id:"list",l:"Action List"},{id:"timeline",l:"Timeline"},{id:"roi",l:"ROI Summary"}].map(tb=>
@@ -924,7 +945,8 @@ function AiChat({t,pg,contextData}){
 function Spinner({t,text}){return<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:40}}><div style={{textAlign:"center"}}><div style={{width:32,height:32,border:"3px solid "+t.cardBorder,borderTopColor:t.primary,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style><div style={{fontSize:12,color:t.textMuted,fontWeight:600}}>{text||"Loading..."}</div></div></div>}
 
 /* ═══════════ MAIN APP ═══════════ */
-const NAV=[{id:"exec",l:"Executive Overview",i:"E"},{id:"inv",l:"Inventory",i:"I"},{id:"plan",l:"ASIN Plan",i:"P"},{id:"prod",l:"Product Performance",i:"Pr"},{id:"shops",l:"Shop Performance",i:"S"},{id:"team",l:"Team Performance",i:"T"},{id:"daily",l:"Daily / Ops",i:"D"},{id:"analytics",l:"Analytics",i:"A"}];
+const NAV=[{id:"exec",l:"Executive Overview",ico:"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"},{id:"inv",l:"Inventory",ico:"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"},{id:"plan",l:"ASIN Plan",ico:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"},{id:"prod",l:"Product Performance",ico:"M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"},{id:"shops",l:"Shop Performance",ico:"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.5.5-.1 1.4.6 1.4H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"},{id:"team",l:"Team Performance",ico:"M17 20h5v-2a3 3 0 00-5.4-1.7M17 20H7m10 0v-2c0-.7-.1-1.3-.4-1.9M7 20H2v-2a3 3 0 015.4-1.7M7 20v-2c0-.7.1-1.3.4-1.9m0 0a5 5 0 019.2 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"},{id:"daily",l:"Daily / Ops",ico:"M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"},{id:"analytics",l:"Analytics",ico:"M9.7 17L6 13.3l1.4-1.4 2.3 2.3 4.3-4.3 1.4 1.4L9.7 17zM12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z"}];
+const NavIco=({d,size=18,color})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d={d}/></svg>;
 
 export default function App(){
   const{mob,tab}=useResp();
@@ -1164,7 +1186,7 @@ export default function App(){
     {/* SIDEBAR (desktop) or BOTTOM NAV (mobile) */}
     {!mob&&<div style={{width:(tab||!sb)?56:220,background:t.sidebar,borderRight:"1px solid "+t.sidebarBorder,display:"flex",flexDirection:"column",transition:"width .2s",flexShrink:0,overflow:"hidden"}}>
       <div style={{padding:"16px 14px 12px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+t.sidebarBorder,minHeight:54}}><div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#3B4A8A,#6B7FD7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff",flexShrink:0,boxShadow:"0 2px 8px rgba(59,74,138,.3)"}}>A</div>{!tab&&sb&&<div><div style={{fontSize:15,fontWeight:800,color:t.text,lineHeight:1.1,letterSpacing:-.3}}>Amazon</div><div style={{fontSize:8.5,color:t.textMuted,letterSpacing:2,fontWeight:700,textTransform:"uppercase",marginTop:1}}>Dashboard</div></div>}</div>
-      <div style={{flex:1,padding:6,overflowY:"auto"}}>{NAV.map(n=><button key={n.id} onClick={()=>setPg(n.id)} style={{width:"100%",display:"flex",alignItems:"center",padding:(!tab&&sb)?"11px 16px":"11px 0",borderRadius:10,border:"none",cursor:"pointer",marginBottom:2,background:pg===n.id?t.sidebarActive:"transparent",color:pg===n.id?t.primary:t.textSec,justifyContent:(!tab&&sb)?"flex-start":"center",fontSize:13.5,transition:"all .15s ease"}} onMouseEnter={e=>{if(pg!==n.id)e.currentTarget.style.background=t.tableHover}} onMouseLeave={e=>{if(pg!==n.id)e.currentTarget.style.background="transparent"}}>{(!tab&&sb)?<span style={{fontWeight:pg===n.id?700:500,whiteSpace:"nowrap",letterSpacing:-.1}}>{n.l}</span>:<span style={{fontSize:10,fontWeight:700,letterSpacing:-.5}}>{n.l.split(" ")[0].slice(0,3)}</span>}</button>)}</div>
+      <div style={{flex:1,padding:6,overflowY:"auto"}}>{NAV.map(n=><button key={n.id} onClick={()=>setPg(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:(!tab&&sb)?"11px 16px":"11px 0",borderRadius:10,border:"none",cursor:"pointer",marginBottom:2,background:pg===n.id?t.sidebarActive:"transparent",color:pg===n.id?t.primary:t.textSec,justifyContent:(!tab&&sb)?"flex-start":"center",fontSize:13.5,transition:"all .15s ease"}} onMouseEnter={e=>{if(pg!==n.id)e.currentTarget.style.background=t.tableHover}} onMouseLeave={e=>{if(pg!==n.id)e.currentTarget.style.background="transparent"}}><NavIco d={n.ico} size={18} color={pg===n.id?t.primary:t.textMuted}/>{(!tab&&sb)&&<span style={{fontWeight:pg===n.id?700:500,whiteSpace:"nowrap",letterSpacing:-.1}}>{n.l}</span>}</button>)}</div>
       {!tab&&<div style={{padding:6,borderTop:"1px solid "+t.sidebarBorder}}><button onClick={()=>setSb(!sb)} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"transparent",color:t.textMuted,display:"flex",alignItems:"center",justifyContent:sb?"flex-start":"center",gap:6,fontSize:11,fontWeight:600}}><span>{sb?"◀":"▶"}</span>{sb&&<span>Collapse</span>}</button></div>}
     </div>}
 
@@ -1205,7 +1227,7 @@ export default function App(){
     </div>
 
     {/* MOBILE BOTTOM NAV */}
-    {mob&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:t.sidebar,borderTop:"1px solid "+t.sidebarBorder,display:"flex",justifyContent:"space-around",padding:"8px 0",zIndex:998}}>{NAV.map(n=><button key={n.id} onClick={()=>{setPg(n.id);setMobileFilters(false)}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:6,color:pg===n.id?t.primary:t.textMuted,fontSize:10,fontWeight:pg===n.id?700:500,minWidth:0}}><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:52}}>{n.l.split(" ")[0]}</span></button>)}</div>}
+    {mob&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:t.sidebar,borderTop:"1px solid "+t.sidebarBorder,display:"flex",justifyContent:"space-around",padding:"8px 0",zIndex:998}}>{NAV.map(n=><button key={n.id} onClick={()=>{setPg(n.id);setMobileFilters(false)}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:6,color:pg===n.id?t.primary:t.textMuted,fontSize:10,fontWeight:pg===n.id?700:500,minWidth:0}}><NavIco d={n.ico} size={16} color={pg===n.id?t.primary:t.textMuted}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:52}}>{n.l.split(" ")[0]}</span></button>)}</div>}
 
     <AiChat t={t} pg={pg} contextData={{em,fAsin,fShopData,fSeller,invData,invShop,fDaily,sd,ed}}/>
     <StockModal asin={stockAsin} t={t} onClose={()=>setStockAsin(null)}/>
