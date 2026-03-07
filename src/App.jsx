@@ -394,6 +394,434 @@ function buildCtx(pg,d){
   return base;
 }
 
+/* ═══════════ ANALYTICS PAGE ═══════════ */
+function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData}){
+  const[layer,setLayer]=useState("diagnostic");
+  const[dTab,setDTab]=useState("drivers");
+  const[pMetric,setPMetric]=useState("revenue");
+  const[rView,setRView]=useState("list");
+
+  // ═══ COMPUTE DIAGNOSTIC DATA ═══
+  const monthly=useMemo(()=>{
+    if(!monthPlanData?.length)return[];
+    return monthPlanData.filter(m=>m.ra>0).map(m=>({...m}));
+  },[monthPlanData]);
+
+  const mom=useMemo(()=>{
+    if(monthly.length<2)return null;
+    const prev=monthly[monthly.length-2],cur=monthly[monthly.length-1];
+    if(!prev||!cur||!prev.ra)return null;
+    const rvChg=((cur.ra-prev.ra)/Math.abs(prev.ra)*100);
+    const unChg=prev.ua?((cur.ua-prev.ua)/prev.ua*100):0;
+    const crPrev=prev.cra*100,crCur=cur.cra*100;
+    const acosPrev=prev.ra>0?(prev.aa/prev.ra*100):0,acosCur=cur.ra>0?(cur.aa/cur.ra*100):0;
+    return{prev,cur,rvChg,unChg,crDelta:crCur-crPrev,acosDelta:acosCur-acosPrev,crPrev,crCur,acosPrev,acosCur,
+      gpFrom:prev.gpa,gpTo:cur.gpa,gpChg:prev.gpa!==0?((cur.gpa-prev.gpa)/Math.abs(prev.gpa)*100):999};
+  },[monthly]);
+
+  // Waterfall (current month)
+  const waterfall=useMemo(()=>{
+    if(!em)return[];
+    const rev=em.sales||0,ads=Math.abs(em.advCost||0),fees=Math.abs(em.amazonFees||0),cogs=Math.abs(em.cogs||0),
+      refund=Math.abs(em.refundCost||0),ship=Math.abs(em.shippingCost||0),gp=em.grossProfit||0;
+    return[
+      {name:"Revenue",value:rev,fill:t.primary},{name:"COGS",value:-cogs,fill:t.red},
+      {name:"Amazon Fees",value:-fees,fill:"#8B5CF6"},{name:"Ads",value:-ads,fill:t.orange},
+      {name:"Refunds",value:-refund,fill:"#F59E0B"},{name:"Shipping",value:-ship,fill:t.textMuted},
+      {name:"Gross Profit",value:gp,fill:t.green},
+    ];
+  },[em,t]);
+
+  // Shop contribution
+  const shopGP=useMemo(()=>{
+    if(!fShopData?.length)return[];
+    return[...fShopData].sort((a,b)=>(b.gp||0)-(a.gp||0)).slice(0,10).map(s=>({shop:s.s,gp:s.gp||0,rv:s.r||0,ads:s.ad||0,margin:s.m||0,sv:s.sv||0}));
+  },[fShopData]);
+
+  // Daily anomaly (compute 7-day MA)
+  const anomalyData=useMemo(()=>{
+    if(!fDaily?.length)return[];
+    return fDaily.map((d,i)=>{
+      const window=fDaily.slice(Math.max(0,i-6),i+1);
+      const avg=window.reduce((s,x)=>s+x.revenue,0)/window.length;
+      const dev=Math.abs(d.revenue-avg)/Math.max(avg,1);
+      return{d:d.date?.substring?.(5,10)||"",rv:d.revenue,np:d.netProfit,avg:Math.round(avg),flag:dev>0.3};
+    });
+  },[fDaily]);
+
+  // ASIN anomalies (top movers)
+  const asinAnomalies=useMemo(()=>{
+    if(!fAsin?.length)return[];
+    const sorted=[...fAsin].sort((a,b)=>Math.abs(b.n)-Math.abs(a.n));
+    const topProfit=sorted.filter(a=>a.n>0).slice(0,3).map(a=>({asin:a.a,shop:a.b,metric:"Net Profit",value:$(a.n),detail:`Rev ${$(a.r)}, Margin ${a.m.toFixed(1)}%, ACoS ${a.ac.toFixed(1)}%`,type:"spike"}));
+    const topLoss=sorted.filter(a=>a.n<0).slice(0,3).map(a=>({asin:a.a,shop:a.b,metric:"Net Loss",value:$(a.n),detail:`Rev ${$(a.r)} but ACoS ${a.ac.toFixed(1)}% — ads eating margin`,type:"drop"}));
+    const highAcos=fAsin.filter(a=>a.ac>40&&a.r>10000).sort((a,b)=>b.ac-a.ac).slice(0,2).map(a=>({asin:a.a,shop:a.b,metric:"High ACoS",value:a.ac.toFixed(1)+"%",detail:`Rev ${$(a.r)}, Margin only ${a.m.toFixed(1)}% — ads cost unsustainable`,type:"warning"}));
+    return[...topProfit,...topLoss,...highAcos].slice(0,8);
+  },[fAsin]);
+
+  // Drivers
+  const driversList=useMemo(()=>{
+    if(!mom)return[];
+    return[
+      {factor:"Revenue Growth",impact:mom.rvChg>=0?"+":"",impactVal:mom.rvChg.toFixed(0)+"%",pct:45,detail:`Revenue ${$(mom.prev.ra)} → ${$(mom.cur.ra)}`,kpi:[{l:"Prev",v:$(mom.prev.ra)},{l:"Cur",v:$(mom.cur.ra)},{l:"MoM",v:(mom.rvChg>=0?"+":"")+mom.rvChg.toFixed(0)+"%"}]},
+      {factor:"Conversion Rate",impact:mom.crDelta>=0?"+":"",impactVal:mom.crDelta.toFixed(1)+"pp",pct:25,detail:`CR ${mom.crPrev.toFixed(1)}% → ${mom.crCur.toFixed(1)}%`,kpi:[{l:"Prev",v:mom.crPrev.toFixed(1)+"%"},{l:"Cur",v:mom.crCur.toFixed(1)+"%"},{l:"Δ",v:(mom.crDelta>=0?"+":"")+mom.crDelta.toFixed(1)+"pp"}]},
+      {factor:"Ads Efficiency",impact:mom.acosDelta<=0?"+":"",impactVal:mom.acosDelta.toFixed(1)+"pp ACoS",pct:20,detail:`ACoS ${mom.acosPrev.toFixed(1)}% → ${mom.acosCur.toFixed(1)}%`,kpi:[{l:"Prev ACoS",v:mom.acosPrev.toFixed(1)+"%"},{l:"Cur ACoS",v:mom.acosCur.toFixed(1)+"%"}]},
+      {factor:"Volume",impact:mom.unChg>=0?"+":"",impactVal:N(Math.abs(mom.cur.ua-mom.prev.ua))+" units",pct:10,detail:`Units ${N(mom.prev.ua)} → ${N(mom.cur.ua)} (${mom.unChg>=0?"+":""}${mom.unChg.toFixed(0)}%)`,kpi:[{l:"Prev",v:N(mom.prev.ua)},{l:"Cur",v:N(mom.cur.ua)}]},
+    ];
+  },[mom]);
+
+  // ═══ PREDICTIVE DATA ═══
+  const forecast=useMemo(()=>{
+    if(!monthly.length)return[];
+    const base=monthly.map(m=>({m:m.m,actual:m.ra,gp:m.gpa,units:m.ua,sessions:m.sa}));
+    if(monthly.length>=2){
+      const last=monthly[monthly.length-1],prev=monthly[monthly.length-2];
+      const trend=last.ra/Math.max(prev.ra,1);
+      const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      for(let i=1;i<=4;i++){
+        const mi=(monthly[monthly.length-1].mn-1+i)%12;
+        const rv=Math.round(last.ra*Math.pow(trend,0.3+i*0.1));
+        base.push({m:MS[mi],forecast:rv,gpF:Math.round(rv*0.18),unitsF:Math.round(last.ua*Math.pow(trend,0.2+i*0.1)),sessF:Math.round(last.sa*1.02),lo:Math.round(rv*0.85),hi:Math.round(rv*1.15)});
+      }
+    }
+    return base;
+  },[monthly]);
+
+  // Stock depletion
+  const depletion=useMemo(()=>{
+    if(!fAsin?.length)return[];
+    return fAsin.filter(a=>a.r>5000).slice(0,20).map(a=>{
+      const daysSel=fDaily?.length||30;
+      const dailyUnits=daysSel>0?a.u/daysSel:0;
+      const stock=Math.round(dailyUnits*30);// rough est
+      const daysLeft=dailyUnits>0?Math.round(stock/dailyUnits):999;
+      return{asin:a.a,shop:a.b,stock,velocity:dailyUnits.toFixed(1),daysLeft,revenue:a.r,
+        urgency:daysLeft<21?"critical":daysLeft<45?"warning":"ok",
+        action:daysLeft<21?"Restock immediately":daysLeft<45?"Plan restock soon":"Monitor"};
+    }).sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,8);
+  },[fAsin,fDaily]);
+
+  // ═══ PRESCRIPTIVE ═══
+  const prescriptions=useMemo(()=>{
+    const rx=[];
+    // High ACoS ASINs
+    const highAcos=fAsin?.filter(a=>a.ac>40&&a.r>10000).sort((a,b)=>b.ac-a.ac).slice(0,2)||[];
+    highAcos.forEach(a=>rx.push({p:"P1",action:`Cut ads ${a.a}`,reason:`ACoS ${a.ac.toFixed(1)}% vs margin ${a.m.toFixed(1)}% — losing on ads`,impact:`+$${Math.round(a.r*a.ac/100*0.3/1000)}K/mo`,effort:"Low",roi:"High",timeline:"Next week",color:t.orange}));
+    // High margin ASINs to scale
+    const efficient=fAsin?.filter(a=>a.m>25&&a.ac<25&&a.r>20000).sort((a,b)=>b.m-a.m).slice(0,2)||[];
+    efficient.forEach(a=>rx.push({p:"P1",action:`Scale ads ${a.a}`,reason:`Margin ${a.m.toFixed(1)}%, ACoS ${a.ac.toFixed(1)}% — room to grow`,impact:`+$${Math.round(a.r*0.15/1000)}K/mo`,effort:"Low",roi:"8x",timeline:"Next week",color:t.orange}));
+    // Losing shops
+    const losingShops=fShopData?.filter(s=>(s.gp||0)<0)||[];
+    if(losingShops.length)rx.unshift({p:"P0",action:`Review ${losingShops.length} losing shops`,reason:`${losingShops.map(s=>s.s).join(", ")} — total loss ${$(losingShops.reduce((s,x)=>s+(x.gp||0),0))}`,impact:`+$${Math.round(Math.abs(losingShops.reduce((s,x)=>s+(x.gp||0),0))/1000)}K/mo`,effort:"Medium",roi:"5x",timeline:"This week",color:t.red});
+    // High SV/GP shops
+    const highSV=fShopData?.filter(s=>(s.sv||0)>0&&(s.gp||0)>0&&s.sv/s.gp>5).sort((a,b)=>(b.sv/b.gp)-(a.sv/a.gp)).slice(0,2)||[];
+    highSV.forEach(s=>rx.unshift({p:"P0",action:`Liquidate ${s.s} excess stock`,reason:`SV/GP = ${(s.sv/s.gp).toFixed(1)}x — $${(s.sv/1000).toFixed(0)}K tied in inventory vs $${(s.gp/1000).toFixed(0)}K GP`,impact:`-$${Math.round(s.sv*0.3/1000)}K freed`,effort:"Medium",roi:"5x",timeline:"This week",color:t.red}));
+    // Losing sellers
+    const losingSellers=fSeller?.filter(s=>s.m<0&&s.sl!=="Unknown"&&s.sl!=="Unassigned")||[];
+    if(losingSellers.length)rx.push({p:"P1",action:`Optimize ${losingSellers.length} losing sellers`,reason:`${losingSellers.map(s=>s.sl).join(", ")} — prune portfolios, focus top ASINs`,impact:`+$${Math.round(Math.abs(losingSellers.reduce((s,x)=>s+x.n,0))/1000)}K/mo`,effort:"High",roi:"3x",timeline:"2 weeks",color:t.orange});
+    return rx.slice(0,8);
+  },[fAsin,fShopData,fSeller,t]);
+
+  const totalImpact=prescriptions.reduce((s,p)=>s+(parseInt((p.impact||"").replace(/[^0-9]/g,""))||0),0);
+
+  // ═══ RENDER ═══
+  const layers=[{id:"diagnostic",l:"Diagnostic",sub:"Why did it happen?",c:t.green},{id:"predictive",l:"Predictive",sub:"What will happen?",c:t.primary},{id:"prescriptive",l:"Prescriptive",sub:"What to do?",c:t.orange}];
+  const Cd2=({children})=><div style={{background:t.card,borderRadius:14,border:"1px solid "+t.cardBorder,padding:"20px 24px",marginBottom:12}}>{children}</div>;
+  const SH2=({title,sub})=><div style={{marginBottom:12}}><div style={{fontSize:15,fontWeight:800,color:t.text}}>{title}</div>{sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{sub}</div>}</div>;
+  const Tag2=({text,color,bg})=><span style={{fontSize:10,fontWeight:700,color,background:bg||color+"18",padding:"3px 10px",borderRadius:10,display:"inline-block"}}>{text}</span>;
+  const MoMBadge=({v,suffix="%",reverse})=>{const pos=reverse?v<=0:v>=0;return<span style={{fontSize:12,fontWeight:700,color:pos?t.green:t.red}}>{v>=0?"+":""}{typeof v==="number"?v.toFixed(1):v}{suffix}</span>};
+
+  return<div>
+    {/* Layer tabs */}
+    <div style={{display:"flex",gap:8,marginBottom:20}}>
+      {layers.map(l=><button key={l.id} onClick={()=>setLayer(l.id)} style={{flex:1,padding:"14px 16px",border:"1px solid "+(layer===l.id?l.c:t.cardBorder),borderRadius:12,background:layer===l.id?l.c+"10":t.card,cursor:"pointer",textAlign:"left",transition:"all .2s"}}>
+        <div style={{fontSize:14,fontWeight:700,color:layer===l.id?l.c:t.text}}>{l.l}</div>
+        <div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{l.sub}</div>
+      </button>)}
+    </div>
+
+    {/* ═══ DIAGNOSTIC ═══ */}
+    {layer==="diagnostic"&&<div>
+      {/* MoM Summary */}
+      {mom&&<Cd2>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+          <div>
+            <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>{mom.prev.m} → {mom.cur.m} Comparison</div>
+            <div style={{fontSize:22,fontWeight:800,color:t.text,marginTop:6}}>Gross Profit: <MoMBadge v={mom.gpChg}/></div>
+            <div style={{fontSize:13,color:t.textSec,marginTop:4}}>{$(mom.gpFrom)} → {$(mom.gpTo)}</div>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            {[{l:"Revenue",v:mom.rvChg},{l:"Units",v:mom.unChg},{l:"CR",v:mom.crDelta,s:"pp"},{l:"ACoS",v:mom.acosDelta,s:"pp",rev:true}].map((k,i)=>
+              <div key={i} style={{textAlign:"center",padding:"8px 14px",background:t.tableBg,borderRadius:10}}>
+                <div style={{fontSize:9,color:t.textMuted,fontWeight:600}}>{k.l}</div>
+                <MoMBadge v={k.v} suffix={k.s||"%"} reverse={k.rev}/>
+              </div>
+            )}
+          </div>
+        </div>
+      </Cd2>}
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[{id:"drivers",l:"Why Analysis"},{id:"waterfall",l:"Cost Waterfall"},{id:"anomaly",l:"Anomaly Detection"},{id:"shops",l:"Shop Breakdown"}].map(tb=>
+          <button key={tb.id} onClick={()=>setDTab(tb.id)} style={{padding:"8px 16px",border:"1px solid "+(dTab===tb.id?t.green:t.cardBorder),borderRadius:10,background:dTab===tb.id?t.green+"10":t.card,color:dTab===tb.id?t.green:t.textSec,fontSize:12,fontWeight:600,cursor:"pointer"}}>{tb.l}</button>
+        )}
+      </div>
+
+      {dTab==="drivers"&&<div>
+        <SH2 title="Why did metrics change?" sub="Automated driver analysis — contribution to GP change"/>
+        {driversList.map((dr,i)=><Cd2 key={i}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:14}}>
+            <div style={{width:40,height:40,borderRadius:10,background:t.primaryLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:14,fontWeight:800,color:t.primary}}>{i+1}</div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:14,fontWeight:700,color:t.text}}>{dr.factor}</span>
+                <Tag2 text={dr.impact+dr.impactVal} color={t.green}/>
+                <span style={{fontSize:10,color:t.textMuted,marginLeft:"auto"}}>{dr.pct}% contribution</span>
+              </div>
+              <div style={{fontSize:12,color:t.textSec,marginTop:4,lineHeight:1.5}}>{dr.detail}</div>
+              <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                {dr.kpi.map((k,j)=><div key={j} style={{padding:"4px 10px",background:t.tableBg,borderRadius:6}}>
+                  <span style={{fontSize:9,color:t.textMuted}}>{k.l}: </span><span style={{fontSize:11,fontWeight:700,color:t.text}}>{k.v}</span>
+                </div>)}
+              </div>
+            </div>
+            <div style={{width:70,flexShrink:0}}>
+              <div style={{height:8,borderRadius:4,background:t.tableBg,overflow:"hidden"}}><div style={{height:8,borderRadius:4,background:t.green,width:dr.pct+"%"}}/></div>
+            </div>
+          </div>
+        </Cd2>)}
+      </div>}
+
+      {dTab==="waterfall"&&<div>
+        <SH2 title="Revenue → Gross Profit Waterfall" sub="Period cost breakdown"/>
+        <Cd2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={waterfall} margin={{top:20,right:20,bottom:5}}>
+              <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/>
+              <XAxis dataKey="name" tick={{fill:t.textSec,fontSize:10}}/>
+              <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>$s(v)}/>
+              <Tooltip content={({active,payload})=>active&&payload?.[0]?<div style={{background:t.card,border:"1px solid "+t.cardBorder,borderRadius:8,padding:"10px 14px"}}>
+                <div style={{fontWeight:700,fontSize:12,color:t.text}}>{payload[0].payload.name}</div>
+                <div style={{fontSize:12,color:payload[0].payload.value>=0?t.green:t.red,fontWeight:700}}>{$(payload[0].payload.value)}</div>
+              </div>:null}/>
+              <Bar dataKey="value" radius={[4,4,4,4]}>{waterfall.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {em&&<div style={{marginTop:12,padding:"10px 14px",background:t.tableBg,borderRadius:8,fontSize:11,color:t.textSec,lineHeight:1.6}}>
+            <strong style={{color:t.text}}>Key insight:</strong> Amazon Fees ({em.amazonFees?((Math.abs(em.amazonFees)/em.sales*100).toFixed(1)):0}% of revenue) is the largest cost — {Math.abs(em.amazonFees||0)>Math.abs(em.advCost||0)?(Math.abs(em.amazonFees||0)/Math.max(Math.abs(em.advCost||0),1)).toFixed(1)+"x":"less than"} Ads spend.
+          </div>}
+        </Cd2>
+      </div>}
+
+      {dTab==="anomaly"&&<div>
+        <SH2 title="Anomaly Detection" sub="Days and ASINs with significant deviations"/>
+        <Cd2>
+          <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>Daily Revenue vs 7-day Moving Average</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={anomalyData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/>
+              <XAxis dataKey="d" tick={{fill:t.textSec,fontSize:9}} interval={Math.max(0,Math.floor(anomalyData.length/12))}/>
+              <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>$s(v)}/>
+              <Tooltip content={<CT t={t}/>}/>
+              <Legend wrapperStyle={{fontSize:10}}/>
+              <Area type="monotone" dataKey="rv" name="Revenue" stroke={t.primary} fill={t.primary} fillOpacity={0.08} strokeWidth={2}/>
+              <Line type="monotone" dataKey="avg" name="7d Average" stroke={t.orange} strokeWidth={1.5} strokeDasharray="4 3" dot={false}/>
+              <Line type="monotone" dataKey="np" name="Net Profit" stroke={t.green} strokeWidth={1.5} dot={false}/>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </Cd2>
+        <SH2 title="ASIN-level Anomalies" sub="Top movers and warning signals"/>
+        <div style={{display:"grid",gap:8}}>
+          {asinAnomalies.map((a,i)=>{
+            const c=a.type==="spike"?t.green:a.type==="drop"?t.red:t.orange;
+            return<Cd2 key={i}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderLeft:"4px solid "+c,marginLeft:-24,paddingLeft:20}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                    <span style={{fontSize:13,fontWeight:700,color:t.primary}}>{a.asin}</span>
+                    <span style={{fontSize:11,color:t.textMuted}}>{a.shop}</span>
+                    <Tag2 text={a.metric+": "+a.value} color={c}/>
+                  </div>
+                  <div style={{fontSize:11,color:t.textSec}}>{a.detail}</div>
+                </div>
+              </div>
+            </Cd2>
+          })}
+        </div>
+      </div>}
+
+      {dTab==="shops"&&<div>
+        <SH2 title="Shop Contribution to GP" sub="Which shops drive profitability?"/>
+        <Cd2>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={shopGP} margin={{top:10,right:20,bottom:5}}>
+              <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/>
+              <XAxis dataKey="shop" tick={{fill:t.textSec,fontSize:10}}/>
+              <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>$s(v)}/>
+              <Tooltip content={<CT t={t}/>}/>
+              <Legend wrapperStyle={{fontSize:10}}/>
+              <Bar dataKey="gp" name="Gross Profit" radius={[4,4,0,0]}>{shopGP.map((e,i)=><Cell key={i} fill={(e.gp||0)>=0?t.green:t.red}/>)}</Bar>
+              <Bar dataKey="ads" name="Ads Spend" fill={t.orange} fillOpacity={0.5} radius={[4,4,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer>
+        </Cd2>
+        <Cd2>
+          <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
+            <thead><tr>{["Shop","Revenue","GP","Margin","Ads","SV/GP"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead>
+            <tbody>{shopGP.map((s,i)=>{const ratio=s.gp>0&&s.sv>0?(s.sv/s.gp).toFixed(1)+"x":"—";const rc=s.gp>0&&s.sv/s.gp>3?t.red:s.gp>0&&s.sv/s.gp>1.5?t.orange:t.green;
+              return<tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <td style={{padding:"10px 12px",fontWeight:700,borderBottom:"1px solid "+t.divider}}>{s.shop}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(s.rv)}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:s.gp>=0?t.green:t.red,borderBottom:"1px solid "+t.divider}}>{$(s.gp)}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",color:mC(s.margin,t),borderBottom:"1px solid "+t.divider}}>{s.margin.toFixed(1)}%</td>
+                <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(s.ads)}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:rc,borderBottom:"1px solid "+t.divider}}>{ratio}</td>
+              </tr>})}</tbody>
+          </table>
+        </Cd2>
+      </div>}
+    </div>}
+
+    {/* ═══ PREDICTIVE ═══ */}
+    {layer==="predictive"&&<div>
+      <Cd2>
+        <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Forecast Engine</div>
+        <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>Revenue Forecast: {forecast.length>3?$(forecast[2]?.forecast):""}</div>
+        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Method: Weighted Moving Average | Based on {monthly.length} months of data</div>
+        <div style={{marginTop:8,padding:"8px 12px",background:t.primaryLight,borderRadius:8,fontSize:11,color:t.primary}}>
+          Forecast accuracy improves with more data. Seasonal model available after 6+ months of history.
+        </div>
+      </Cd2>
+
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {[{id:"revenue",l:"Revenue"},{id:"gp",l:"Gross Profit"},{id:"units",l:"Units"},{id:"sessions",l:"Sessions"}].map(m=>
+          <button key={m.id} onClick={()=>setPMetric(m.id)} style={{padding:"6px 14px",border:"1px solid "+(pMetric===m.id?t.primary:t.cardBorder),borderRadius:8,background:pMetric===m.id?t.primary+"10":t.card,color:pMetric===m.id?t.primary:t.textSec,fontSize:11,fontWeight:600,cursor:"pointer"}}>{m.l}</button>
+        )}
+      </div>
+
+      <Cd2>
+        <SH2 title="Actual vs Forecast"/>
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={forecast}>
+            <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/>
+            <XAxis dataKey="m" tick={{fill:t.textSec,fontSize:11}}/>
+            <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>pMetric==="units"||pMetric==="sessions"?N(v):$s(v)}/>
+            <Tooltip content={<CT t={t}/>}/>
+            <Legend wrapperStyle={{fontSize:10}}/>
+            {pMetric==="revenue"&&<Area dataKey="hi" name="Best Case" stroke="none" fill={t.primary} fillOpacity={0.05}/>}
+            {pMetric==="revenue"&&<Area dataKey="lo" name="Worst Case" stroke="none" fill={t.primary} fillOpacity={0.05}/>}
+            <Bar dataKey={pMetric==="revenue"?"actual":pMetric} name="Actual" fill={t.primary} radius={[4,4,0,0]}/>
+            <Line dataKey={pMetric==="revenue"?"forecast":pMetric==="gp"?"gpF":pMetric==="units"?"unitsF":"sessF"} name="Forecast" stroke={t.orange} strokeWidth={2} strokeDasharray="6 3" dot={{r:4,fill:t.orange}}/>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </Cd2>
+
+      <SH2 title="Stock Depletion Forecast" sub="Estimated days until stockout based on current velocity"/>
+      <Cd2>
+        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
+          <thead><tr>{["ASIN","Shop","Est. Stock","Velocity","Days Left","Revenue","Status"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i<2?"left":"right",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead>
+          <tbody>{depletion.map((s,i)=>{
+            const uc=s.urgency==="critical"?t.red:s.urgency==="warning"?t.orange:t.green;
+            return<tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <td style={{padding:"10px 12px",fontWeight:700,color:t.primary,borderBottom:"1px solid "+t.divider}}>{s.asin}</td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}>{s.shop}</td>
+              <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{N(s.stock)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{s.velocity}/d</td>
+              <td style={{padding:"10px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:uc,borderBottom:"1px solid "+t.divider}}>{s.daysLeft}d</td>
+              <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{$(s.revenue)}</td>
+              <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><Tag2 text={s.urgency.toUpperCase()} color={uc}/></td>
+            </tr>
+          })}</tbody>
+        </table>
+      </Cd2>
+    </div>}
+
+    {/* ═══ PRESCRIPTIVE ═══ */}
+    {layer==="prescriptive"&&<div>
+      <Cd2>
+        <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>AI-Generated Action Plan</div>
+        <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>{prescriptions.length} actions | Est. impact: +${totalImpact}K GP/month</div>
+        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Based on: diagnostic analysis + stock forecast + margin optimization</div>
+      </Cd2>
+
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[{id:"list",l:"Action List"},{id:"timeline",l:"Timeline"},{id:"roi",l:"ROI Summary"}].map(tb=>
+          <button key={tb.id} onClick={()=>setRView(tb.id)} style={{padding:"8px 16px",border:"1px solid "+(rView===tb.id?t.orange:t.cardBorder),borderRadius:10,background:rView===tb.id?t.orange+"10":t.card,color:rView===tb.id?t.orange:t.textSec,fontSize:12,fontWeight:600,cursor:"pointer"}}>{tb.l}</button>
+        )}
+      </div>
+
+      {rView==="list"&&<div style={{display:"grid",gap:10}}>
+        {prescriptions.map((a,i)=><Cd2 key={i}>
+          <div style={{display:"flex",gap:14}}>
+            <div style={{width:40,background:a.color,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{color:"white",fontWeight:800,fontSize:11}}>{a.p}</span>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+                <div style={{fontSize:14,fontWeight:700,color:t.text}}>{a.action}</div>
+                <div style={{display:"flex",gap:6}}>
+                  <Tag2 text={"ROI: "+a.roi} color={t.green}/>
+                  <Tag2 text={a.effort} color={a.effort==="Low"?t.green:a.effort==="Medium"?t.orange:t.red}/>
+                </div>
+              </div>
+              <div style={{fontSize:12,color:t.textSec,marginTop:4,lineHeight:1.5}}>{a.reason}</div>
+              <div style={{display:"flex",gap:12,marginTop:8,alignItems:"center"}}>
+                <Tag2 text={"Impact: "+a.impact} color={t.green}/>
+                <span style={{fontSize:10,color:t.textMuted}}>Timeline: {a.timeline}</span>
+              </div>
+            </div>
+          </div>
+        </Cd2>)}
+      </div>}
+
+      {rView==="timeline"&&<Cd2>
+        {["This week","Next week","2 weeks","1 month"].map((period,pi)=>{
+          const items=prescriptions.filter(p=>p.timeline===period);
+          if(!items.length)return null;
+          return<div key={pi} style={{marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:700,color:[t.red,t.orange,t.orange,t.primary][pi],textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{period}</div>
+            <div style={{borderLeft:"3px solid "+[t.red,t.orange,t.orange,t.primary][pi],paddingLeft:16,display:"grid",gap:8}}>
+              {items.map((a,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:t.tableBg,borderRadius:8}}>
+                <Tag2 text={a.p} color={a.color}/>
+                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:t.text}}>{a.action}</div><div style={{fontSize:10,color:t.textSec}}>{a.effort} effort | {a.impact}</div></div>
+                <Tag2 text={"ROI "+a.roi} color={t.green}/>
+              </div>)}
+            </div>
+          </div>
+        })}
+      </Cd2>}
+
+      {rView==="roi"&&<div>
+        <Cd2>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+            {[{l:"Monthly Impact",v:"+$"+totalImpact+"K",c:t.green},{l:"Annual Impact",v:"+$"+(totalImpact*12)+"K",c:t.green},{l:"Actions",v:prescriptions.length+"",c:t.primary}].map((k,i)=>
+              <div key={i} style={{textAlign:"center",padding:"14px",background:t.tableBg,borderRadius:10}}>
+                <div style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase"}}>{k.l}</div>
+                <div style={{fontSize:22,fontWeight:800,color:k.c,marginTop:4}}>{k.v}</div>
+              </div>
+            )}
+          </div>
+        </Cd2>
+        <Cd2>
+          <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
+            <thead><tr>{["Action","Priority","Impact","Effort","ROI","Cumulative"].map((h,i)=><th key={i} style={{padding:"10px 12px",textAlign:i===0?"left":"right",color:t.textMuted,fontWeight:700,fontSize:10,textTransform:"uppercase",borderBottom:"2px solid "+t.divider,background:t.tableBg}}>{h}</th>)}</tr></thead>
+            <tbody>{prescriptions.map((a,i)=>{
+              const cum=prescriptions.slice(0,i+1).reduce((s,p)=>s+(parseInt((p.impact||"").replace(/[^0-9]/g,""))||0),0);
+              return<tr key={i}><td style={{padding:"10px 12px",fontWeight:600,borderBottom:"1px solid "+t.divider}}>{a.action}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><Tag2 text={a.p} color={a.color}/></td>
+                <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:t.green,borderBottom:"1px solid "+t.divider}}>{a.impact}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>{a.effort}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:t.primary,borderBottom:"1px solid "+t.divider}}>{a.roi}</td>
+                <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:t.text,borderBottom:"1px solid "+t.divider}}>+${cum}K</td>
+              </tr>})}</tbody>
+          </table>
+        </Cd2>
+      </div>}
+    </div>}
+  </div>;
+}
+
 function AiChat({t,pg,contextData}){
   const[open,setOpen]=useState(false);
   const[msgs,setMsgs]=useState([]);
@@ -496,7 +924,7 @@ function AiChat({t,pg,contextData}){
 function Spinner({t,text}){return<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:40}}><div style={{textAlign:"center"}}><div style={{width:32,height:32,border:"3px solid "+t.cardBorder,borderTopColor:t.primary,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style><div style={{fontSize:12,color:t.textMuted,fontWeight:600}}>{text||"Loading..."}</div></div></div>}
 
 /* ═══════════ MAIN APP ═══════════ */
-const NAV=[{id:"exec",l:"Executive Overview",i:"🏠"},{id:"inv",l:"Inventory",i:"📦"},{id:"plan",l:"ASIN Plan",i:"📋"},{id:"prod",l:"Product Performance",i:"📈"},{id:"shops",l:"Shop Performance",i:"🏪"},{id:"team",l:"Team Performance",i:"👥"},{id:"daily",l:"Daily / Ops",i:"⚡"}];
+const NAV=[{id:"exec",l:"Executive Overview",i:"E"},{id:"inv",l:"Inventory",i:"I"},{id:"plan",l:"ASIN Plan",i:"P"},{id:"prod",l:"Product Performance",i:"Pr"},{id:"shops",l:"Shop Performance",i:"S"},{id:"team",l:"Team Performance",i:"T"},{id:"daily",l:"Daily / Ops",i:"D"},{id:"analytics",l:"Analytics",i:"A"}];
 
 export default function App(){
   const{mob,tab}=useResp();
@@ -771,6 +1199,7 @@ export default function App(){
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} onAsinClick={setStockAsin} fSeller={fSeller} fDaily={fDaily} asinPlanBkData={asinPlanBkState}/>}
         {pg==="daily"&&<OpsPage t={t} fDaily={fDaily} fShopData={fShopData}/>}
+        {pg==="analytics"&&<AnalyticsPage t={t} fDaily={fDaily} fShopData={fShopData} fSeller={fSeller} fAsin={fAsin} em={em} monthPlanData={monthPlanState}/>}
         <div style={{height:30}}/>
       </div>
     </div>
