@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
-const VER = 'v4.3-2026-03-04';
+const VER = 'v4.5-2026-03-09';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -870,6 +870,96 @@ ${JSON.stringify(context, null, 2)}`;
     if (data.error) return res.status(400).json({ error: data.error.message || 'API error' });
     res.json({ insight: data.content?.[0]?.text || 'Không thể phân tích.' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════ EXEC SHOP EXTENDED ═══════════ */
+/* Returns per-shop: revenue, GP, ads, units, margin, FBA stock, AWD, storageFee, promoValue */
+app.get('/api/exec/shop-extended', async (req, res) => {
+  try {
+    const { start, end, store, seller, asin: af } = req.query;
+    const { s, e } = defDates(start, end);
+    const accId = await storeToAccId(store);
+    const shopMap = await getShopMap();
+    const f = pWhere(s, e, accId, seller, af);
+    // Main P&L per shop
+    const rows = await q(`SELECT p.accountId,
+      SUM(COALESCE(p.salesOrganic,0)+COALESCE(p.salesPPC,0)) as revenue,
+      SUM(COALESCE(p.grossProfit,0)) as gp,
+      SUM(COALESCE(p.netProfit,0)) as np,
+      SUM(ABS(COALESCE(p.sponsoredProducts,0))+ABS(COALESCE(p.sponsoredBrands,0))+ABS(COALESCE(p.sponsoredBrandsVideo,0))+ABS(COALESCE(p.sponsoredDisplay,0))) as ads,
+      SUM(COALESCE(p.unitsOrganic,0)+COALESCE(p.unitsPPC,0)) as units,
+      SUM(COALESCE(p.sessions,0)) as sessions,
+      SUM(COALESCE(p.promoValue,0)) as promo,
+      SUM(COALESCE(p.estimatedStorageFee,0)) as storageFee
+      FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
+      ${f.w} GROUP BY p.accountId ORDER BY revenue DESC`, f.p, 45000);
+    // FBA Stock from snapshot
+    let stockMap = {};
+    try {
+      const sp = accId ? ['WHERE accountId=?', [accId]] : ['WHERE 1=1', []];
+      (await q(`SELECT accountId, SUM(FBAStock) as fba, SUM(COALESCE(stockValue,0)) as sv FROM seller_board_stock ${sp[0]} GROUP BY accountId`, sp[1]))
+        .forEach(s => { stockMap[s.accountId] = { fba: parseInt(s.fba)||0, sv: parseFloat(s.sv)||0 }; });
+    } catch(e) {}
+    res.json(rows.map(r => {
+      const rev=parseFloat(r.revenue)||0, gp=parseFloat(r.gp)||0;
+      const stk=stockMap[r.accountId]||{fba:0,sv:0};
+      return {
+        shop: shopMap[r.accountId]||`Account ${r.accountId}`,
+        accountId: r.accountId,
+        revenue: rev, gp, np: parseFloat(r.np)||0,
+        ads: parseFloat(r.ads)||0,
+        units: parseInt(r.units)||0,
+        sessions: parseFloat(r.sessions)||0,
+        promo: parseFloat(r.promo)||0,
+        storageFee: parseFloat(r.storageFee)||0,
+        margin: rev>0?(gp/rev*100):0,
+        fbaStock: stk.fba, stockValue: stk.sv,
+      };
+    }));
+  } catch (e) { console.error('shop-extended:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════ EXEC DETAIL METRICS ═══════════ */
+/* Returns extra breakdown columns for Executive Overview Detailed Metrics section */
+app.get('/api/exec/detail', async (req, res) => {
+  try {
+    const { start, end, store, seller, asin: af } = req.query;
+    const { s, e } = defDates(start, end);
+    const accId = await storeToAccId(store);
+    const f = pWhere(s, e, accId, seller, af);
+    const rows = await q(`SELECT
+      SUM(COALESCE(p.sponsoredProducts,0)) as sp,
+      SUM(COALESCE(p.sponsoredBrands,0)) as sb,
+      SUM(COALESCE(p.sponsoredBrandsVideo,0)) as sbv,
+      SUM(COALESCE(p.sponsoredDisplay,0)) as sd_ads,
+      SUM(COALESCE(p.FBAPerUnitFulfillmentFee,0)) as fbaFulfillment,
+      SUM(COALESCE(p.commission,0)) as commission,
+      SUM(COALESCE(p.unitsOrganic,0)) as unitsOrganic,
+      SUM(COALESCE(p.unitsSP,0)+COALESCE(p.unitsPPC,0)) as unitsSP,
+      SUM(COALESCE(p.unitsSD,0)) as unitsSD,
+      SUM(COALESCE(p.promoValue,0)) as promo
+      FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
+      ${f.w}`, f.p, 45000);
+    // Sessions breakdown from analytics_sale_traffic_by_date (if exists)
+    let browserSessions=0, mobileSessions=0;
+    try {
+      let tw='WHERE date BETWEEN ? AND ?'; const tp=[s,e];
+      if(accId){tw+=' AND accountId=?';tp.push(accId);}
+      const sr=await q(`SELECT SUM(COALESCE(browserSessions,0)) as bs, SUM(COALESCE(mobileAppSessions,0)) as ms FROM analytics_sale_traffic_by_date ${tw}`,tp,30000);
+      browserSessions=parseFloat(sr[0]?.bs)||0;mobileSessions=parseFloat(sr[0]?.ms)||0;
+    } catch(e){}
+    const r=rows[0]||{};
+    res.json({
+      sp: Math.abs(parseFloat(r.sp)||0), sb: Math.abs(parseFloat(r.sb)||0),
+      sbv: Math.abs(parseFloat(r.sbv)||0), sd: Math.abs(parseFloat(r.sd_ads)||0),
+      fbaFulfillment: Math.abs(parseFloat(r.fbaFulfillment)||0),
+      commission: Math.abs(parseFloat(r.commission)||0),
+      unitsOrganic: parseInt(r.unitsOrganic)||0,
+      unitsSP: parseInt(r.unitsSP)||0, unitsSD: parseInt(r.unitsSD)||0,
+      promo: parseFloat(r.promo)||0,
+      browserSessions, mobileSessions,
+    });
+  } catch (e) { console.error('exec/detail:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════ SERVE FRONTEND ═══════════ */
