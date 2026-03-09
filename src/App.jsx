@@ -558,7 +558,7 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
   const totalImpact=prescriptions.reduce((s,p)=>s+(parseInt((p.impact||"").replace(/[^0-9]/g,""))||0),0);
 
   // ═══ RENDER ═══
-  const layers=[{id:"diagnostic",l:"Diagnostic",sub:"Why did it happen?",c:t.green,desc:"Auto-analyzes what drove metric changes between periods"},{id:"predictive",l:"Predictive",sub:"What will happen?",c:t.primary,desc:"Forecasts future revenue, GP, stock depletion"},{id:"prescriptive",l:"Prescriptive",sub:"What to do?",c:t.orange,desc:"AI-generated action plan with ROI estimates"}];
+  const layers=[{id:"diagnostic",l:"Diagnostic",sub:"Why did it happen?",c:t.green,desc:"Auto-analyzes what drove metric changes between periods"},{id:"predictive",l:"Predictive",sub:"What will happen?",c:t.primary,desc:"Forecasts future revenue, GP, stock depletion"},{id:"prescriptive",l:"Prescriptive",sub:"What to do?",c:t.orange,desc:"Rule-based action plan from current data — ROI estimates auto-calculated"}];
   const Cd2=({children})=><div style={{background:t.card,borderRadius:14,border:"1px solid "+t.cardBorder,padding:"20px 24px",marginBottom:12}}>{children}</div>;
   const SH2=({title,sub})=><div style={{marginBottom:12}}><div style={{fontSize:15,fontWeight:800,color:t.text}}>{title}</div>{sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{sub}</div>}</div>;
   const Tag2=({text,color,bg})=><span style={{fontSize:10,fontWeight:700,color,background:bg||color+"18",padding:"3px 10px",borderRadius:10,display:"inline-block"}}>{text}</span>;
@@ -744,8 +744,8 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
               <YAxis tick={{fill:t.textSec,fontSize:10}} tickFormatter={v=>$s(v)}/>
               <Tooltip content={<CT t={t}/>}/>
               <Legend wrapperStyle={{fontSize:10}}/>
-              <Bar dataKey="gp" name="Gross Profit" radius={[4,4,0,0]}>{shopGP.map((e,i)=><Cell key={i} fill={(e.gp||0)>=0?t.green:t.red}/>)}</Bar>
-              <Bar dataKey="ads" name="Ads Spend" fill={t.orange} fillOpacity={0.5} radius={[4,4,0,0]}/>
+              <Bar dataKey="gp" name="Gross Profit" fill={t.green} radius={[4,4,0,0]}>{shopGP.map((e,i)=><Cell key={i} fill={(e.gp||0)>=0?t.green:t.red}/>)}</Bar>
+              <Bar dataKey="ads" name="Ads Spend" fill={t.orange} radius={[4,4,0,0]}/>
             </BarChart>
           </ResponsiveContainer>
         </Cd2>
@@ -851,9 +851,9 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
     {/* ═══ PRESCRIPTIVE ═══ */}
     {layer==="prescriptive"&&<div>
       <Cd2>
-        <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>AI-Generated Action Plan</div>
+        <div style={{fontSize:11,color:t.textMuted,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Auto-Generated Action Plan</div>
         <div style={{fontSize:18,fontWeight:800,color:t.text,marginTop:6}}>{prescriptions.length} actions | Est. impact: +${totalImpact}K GP/month</div>
-        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Based on: diagnostic analysis + stock forecast + margin optimization</div>
+        <div style={{fontSize:12,color:t.textSec,marginTop:4}}>Based on: rule-based analysis of ACoS, SV/GP ratio, margin, and shop performance</div>
       </Cd2>
 
       <Note text="Actions are auto-generated from current data. Priority: P0 = do this week, P1 = this month, P2 = plan ahead. ROI = estimated return on effort. Review and adjust before executing." color={t.orange}/>
