@@ -928,14 +928,14 @@ app.get('/api/exec/detail', async (req, res) => {
     const accId = await storeToAccId(store);
     const f = pWhere(s, e, accId, seller, af);
     const rows = await q(`SELECT
-      SUM(COALESCE(p.sponsoredProducts,0)) as sp,
-      SUM(COALESCE(p.sponsoredBrands,0)) as sb,
-      SUM(COALESCE(p.sponsoredBrandsVideo,0)) as sbv,
-      SUM(COALESCE(p.sponsoredDisplay,0)) as sd_ads,
-      SUM(COALESCE(p.FBAPerUnitFulfillmentFee,0)) as fbaFulfillment,
-      SUM(COALESCE(p.commission,0)) as commission,
+      ABS(SUM(COALESCE(p.sponsoredProducts,0))) as sp,
+      ABS(SUM(COALESCE(p.sponsoredBrands,0))) as sb,
+      ABS(SUM(COALESCE(p.sponsoredBrandsVideo,0))) as sbv,
+      ABS(SUM(COALESCE(p.sponsoredDisplay,0))) as sd_ads,
+      ABS(SUM(COALESCE(p.FBAPerUnitFulfillmentFee,0))) as fbaFulfillment,
+      ABS(SUM(COALESCE(p.commission,0))) as commission,
       SUM(COALESCE(p.unitsOrganic,0)) as unitsOrganic,
-      SUM(COALESCE(p.unitsSP,0)+COALESCE(p.unitsPPC,0)) as unitsSP,
+      SUM(COALESCE(p.unitsPPC,0)) as unitsSP,
       SUM(COALESCE(p.unitsSD,0)) as unitsSD,
       SUM(COALESCE(p.promoValue,0)) as promo
       FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
