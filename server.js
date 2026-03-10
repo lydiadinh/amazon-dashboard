@@ -537,38 +537,79 @@ app.get('/api/inventory/by-asin', async (req, res) => {
       stockParams.push(seller);
     }
 
-    // Main ASIN stock from seller_board_stock (snapshot)
-    const stockRows = await q(`SELECT s.asin, s.name, s.sku, s.accountId,
-      SUM(s.FBAStock) as fba,
-      SUM(COALESCE(s.reserved,0)) as reserved,
-      SUM(COALESCE(s.sentToFBA,0)) as sentToFBA,
-      SUM(COALESCE(s.stockValue,0)) as stockValue,
-      AVG(COALESCE(s.estimatedSalesVelocity,0)) as velocity,
-      MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft,
-      MAX(COALESCE(s.price,0)) as salePrice,
-      MAX(COALESCE(s.businessPrice,0)) as businessPrice
-      FROM seller_board_stock s${sellerJoin}
-      ${stockWhere}${sellerWhere}
-      GROUP BY s.asin, s.name, s.sku, s.accountId
-      ORDER BY fba DESC LIMIT 300`, stockParams, 30000).catch(()=>[]);
+    // Main ASIN stock from seller_board_stock — try with price cols, fallback without
+    let stockRows = [];
+    try {
+      stockRows = await q(`SELECT s.asin, s.name, s.sku, s.accountId,
+        SUM(s.FBAStock) as fba,
+        SUM(COALESCE(s.reserved,0)) as reserved,
+        SUM(COALESCE(s.sentToFBA,0)) as sentToFBA,
+        SUM(COALESCE(s.stockValue,0)) as stockValue,
+        AVG(COALESCE(s.estimatedSalesVelocity,0)) as velocity,
+        MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft,
+        MAX(COALESCE(s.price,0)) as salePrice,
+        MAX(COALESCE(s.businessPrice,0)) as businessPrice
+        FROM seller_board_stock s${sellerJoin}
+        ${stockWhere}${sellerWhere}
+        GROUP BY s.asin, s.name, s.sku, s.accountId
+        ORDER BY fba DESC LIMIT 300`, stockParams, 30000);
+    } catch(e1) {
+      // Fallback: without price/businessPrice columns
+      try {
+        stockRows = await q(`SELECT s.asin, s.name, s.sku, s.accountId,
+          SUM(s.FBAStock) as fba,
+          SUM(COALESCE(s.reserved,0)) as reserved,
+          SUM(COALESCE(s.sentToFBA,0)) as sentToFBA,
+          SUM(COALESCE(s.stockValue,0)) as stockValue,
+          AVG(COALESCE(s.estimatedSalesVelocity,0)) as velocity,
+          MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft,
+          0 as salePrice, 0 as businessPrice
+          FROM seller_board_stock s${sellerJoin}
+          ${stockWhere}${sellerWhere}
+          GROUP BY s.asin, s.name, s.sku, s.accountId
+          ORDER BY fba DESC LIMIT 300`, stockParams, 30000);
+      } catch(e2) { console.error('stockRows fallback failed:', e2.message); }
+    }
 
-    // Storage fee + inbound from fba_iventory_planning (latest snapshot)
-    const planRows = await q(`SELECT f.asin, f.accountId,
-      SUM(CAST(f.available AS SIGNED)) as available,
-      SUM(COALESCE(f.inboundQuantity,0)) as inbound,
-      SUM(COALESCE(f.totalReservedQuantity,0)) as planReserved,
-      SUM(COALESCE(f.estimatedStorageCostNextMonth,0)) as storageFee,
-      SUM(COALESCE(f.estimatedLongTermStorageFee,0)) as longTermFee,
-      SUM(COALESCE(f.unfulfillableQuantity,0)) as unfulfillable,
-      AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply,
-      SUM(COALESCE(f.invAge0To90Days,0)) as age0_90,
-      SUM(COALESCE(f.invAge91To180Days,0)) as age91_180,
-      SUM(COALESCE(f.invAge181To270Days,0)) as age181_270,
-      SUM(COALESCE(f.invAge271To365Days,0)) as age271_365,
-      SUM(COALESCE(f.invAge365PlusDays,0)) as age365plus
-      FROM fba_iventory_planning f
-      ${planWhere}
-      GROUP BY f.asin, f.accountId`, planParams, 30000).catch(()=>[]);
+    // Storage fee + inbound — try with longterm/unfulfillable cols, fallback without
+    let planRows = [];
+    try {
+      planRows = await q(`SELECT f.asin, f.accountId,
+        SUM(CAST(f.available AS SIGNED)) as available,
+        SUM(COALESCE(f.inboundQuantity,0)) as inbound,
+        SUM(COALESCE(f.totalReservedQuantity,0)) as planReserved,
+        SUM(COALESCE(f.estimatedStorageCostNextMonth,0)) as storageFee,
+        SUM(COALESCE(f.estimatedLongTermStorageFee,0)) as longTermFee,
+        SUM(COALESCE(f.unfulfillableQuantity,0)) as unfulfillable,
+        AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply,
+        SUM(COALESCE(f.invAge0To90Days,0)) as age0_90,
+        SUM(COALESCE(f.invAge91To180Days,0)) as age91_180,
+        SUM(COALESCE(f.invAge181To270Days,0)) as age181_270,
+        SUM(COALESCE(f.invAge271To365Days,0)) as age271_365,
+        SUM(COALESCE(f.invAge365PlusDays,0)) as age365plus
+        FROM fba_iventory_planning f
+        ${planWhere}
+        GROUP BY f.asin, f.accountId`, planParams, 30000);
+    } catch(e1) {
+      // Fallback: without longTermFee / unfulfillable
+      try {
+        planRows = await q(`SELECT f.asin, f.accountId,
+          SUM(CAST(f.available AS SIGNED)) as available,
+          SUM(COALESCE(f.inboundQuantity,0)) as inbound,
+          SUM(COALESCE(f.totalReservedQuantity,0)) as planReserved,
+          SUM(COALESCE(f.estimatedStorageCostNextMonth,0)) as storageFee,
+          0 as longTermFee, 0 as unfulfillable,
+          AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply,
+          SUM(COALESCE(f.invAge0To90Days,0)) as age0_90,
+          SUM(COALESCE(f.invAge91To180Days,0)) as age91_180,
+          SUM(COALESCE(f.invAge181To270Days,0)) as age181_270,
+          SUM(COALESCE(f.invAge271To365Days,0)) as age271_365,
+          SUM(COALESCE(f.invAge365PlusDays,0)) as age365plus
+          FROM fba_iventory_planning f
+          ${planWhere}
+          GROUP BY f.asin, f.accountId`, planParams, 30000);
+      } catch(e2) { console.error('planRows fallback failed:', e2.message); }
+    }
 
     // Build plan lookup: asin+accountId -> planRow
     const planMap = {};
