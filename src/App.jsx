@@ -546,6 +546,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderBottom:'1px solid '+t.divider}}>
           <div style={{fontSize:13,fontWeight:700,color:t.text}}>Shop Performance</div>
           <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            {shopView==='table'&&<span style={{fontSize:10,color:t.textMuted,fontWeight:500}}>Sort by:</span>}
             {shopView==='table'&&<select value={sortShop} onChange={e=>setSortShop(e.target.value)} style={{background:t.card,color:t.text,border:'1px solid '+t.inputBorder,borderRadius:7,padding:'4px 8px',fontSize:11,cursor:'pointer'}}>
               {['Revenue','Net Profit','Margin','Units'].map(o=><option key={o}>{o}</option>)}
             </select>}
