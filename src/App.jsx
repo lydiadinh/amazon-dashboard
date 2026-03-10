@@ -225,15 +225,15 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,pctChg,mob,onAsinClick,s
   const DETAIL_ROWS=[
     {id:'sales',label:'Sales',val:em.sales,fmt:$2,tip:TIPS.sales,sub:[]},
     {id:'units',label:'Units',val:em.units,fmt:N,tip:TIPS.units,sub:[
-      {l:'Organic',v:em.unitsOrganic||0,fmt:N},{l:'SP',v:em.unitsSP||0,fmt:N},{l:'SD',v:em.unitsSD||0,fmt:N},
+      {l:'Organic',v:em.unitsOrganic||0,fmt:N},{l:'Sponsored (PPC)',v:em.unitsSP||0,fmt:N},
     ]},
     {id:'ads',label:'Adv. Cost',val:Math.abs(em.advCost||0),fmt:$2,tip:TIPS.advCost,sub:[
       {l:'Sponsored Products',v:em.sp||0,fmt:$2},{l:'Sponsored Brands',v:em.sb||0,fmt:$2},
       {l:'Sponsored Brands Video',v:em.sbv||0,fmt:$2},{l:'Sponsored Display',v:em.sd||0,fmt:$2},
     ]},
     {id:'fees',label:'Amazon Fees',val:Math.abs(em.amazonFees||0),fmt:$2,tip:TIPS.amazonFees,sub:[
-      {l:'FBA Fulfillment Fee',v:em.fbaFulfillment||0,fmt:$2},{l:'Referral Fee (Commission)',v:em.commission||0,fmt:$2},
-      {l:'Shipping',v:em.shippingCost||0,fmt:$2},{l:'Refund Cost',v:em.refundCost||0,fmt:$2},
+      {l:'FBA Fulfillment Fee',v:em.fbaFulfillment||0,fmt:$2},
+      {l:'Referral Fee (Commission)',v:em.commission||0,fmt:$2},
     ]},
     {id:'cogs',label:'COGS',val:Math.abs(em.cogs||0),fmt:$2,tip:'Cost of Goods Sold',sub:[]},
     {id:'sessions',label:'Sessions',val:Math.round(em.sessions||0),fmt:N,tip:TIPS.sessions,isNew:true,sub:[
@@ -1434,6 +1434,7 @@ export default function App(){
   const[splyEm,setSplyEm]=useState(null);
   const[dailyLY,setDailyLY]=useState([]);
   const[execDetail,setExecDetail]=useState({});
+  const[shopExt,setShopExt]=useState([]);
   const[loading,setLoading]=useState(false);
 
   const opts=useBidirectionalFilters(store,seller,asinF,masterList);
@@ -1545,6 +1546,7 @@ export default function App(){
       const lyE=new Date(_ed+'T00:00:00');lyE.setFullYear(lyE.getFullYear()-1);
       const lyStart=lyS.toISOString().slice(0,10),lyEnd=lyE.toISOString().slice(0,10);
       api('exec/detail',{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&d)setExecDetail(d)}).catch(()=>{});
+      api('exec/shop-extended',{start:_sd,end:_ed,store:_st,seller:_sl}).then(d=>{if(!cancelled&&Array.isArray(d))setShopExt(d)}).catch(()=>{});
       api('exec/daily',{start:lyStart,end:lyEnd,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&Array.isArray(d))setDailyLY(d.map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+'T12:00:00');const label=isNaN(dt)?ds:MS[dt.getMonth()]+' '+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0}}))}).catch(()=>{});
       setFAsin(arr(asins).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
       setFShopData(arr(shops).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,gp:parseFloat(r.grossProfit)||parseFloat(r.netProfit)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0,u:parseInt(r.units)||0,ad:parseFloat(r.ads)||0,sv:parseFloat(r.stockValue)||0,gpP:parseFloat(r.gpPlan)||0,rvP:parseFloat(r.rvPlan)||0,adP:parseFloat(r.adPlan)||0,unP:parseFloat(r.unPlan)||0})));
@@ -1682,7 +1684,7 @@ export default function App(){
       {/* CONTENT */}
       <div style={{flex:1,overflow:"auto",padding:mob?12:20}}>
         {filterError&&<div style={{padding:"10px 16px",marginBottom:12,background:"#FEF3CD",border:"1px solid #F0D060",borderRadius:8,fontSize:11,color:"#856404"}}>Filter issue: {filterError} — <a href={window.location.origin+"/api/debug/filters"} target="_blank" rel="noopener" style={{color:"#0066CC",textDecoration:"underline"}}>View debug info</a></div>}
-        {pg==="exec"&&<ExecPage t={t} onAsinClick={setStockAsin} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={{...em,...execDetail}} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob} splyEm={splyEm} dailyLY={dailyLY}/>}
+        {pg==="exec"&&<ExecPage t={t} onAsinClick={setStockAsin} fAsin={fAsin} fShop={fShopRev} fDaily={fDaily} em={{...em,...execDetail}} sd={sd} ed={ed} prevEm={prevEm} pctChg={pctChg} mob={mob} splyEm={splyEm} dailyLY={dailyLY} shopExt={shopExt}/>}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend} invFeeMonthly={invFeeMonthly}/>}
         {pg==="plan"&&<PlanPage t={t} onAsinClick={setStockAsin} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF}/>}
         {pg==="prod"&&<ProdPage t={t} onAsinClick={setStockAsin} fAsin={fAsin} fDaily={fDaily}/>}
