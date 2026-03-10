@@ -172,6 +172,57 @@ function genOpsAlerts(fDaily,t){const alerts=[];const negDays=fDaily.filter(d=>d
 function genInvAlerts(shops,invData){const a=[];const tFba=invData?.fbaStock||shops.reduce((s,x)=>s+x.fba,0);const crit=invData?.criticalSkus||shops.reduce((s,x)=>s+x.crit,0);const lowSt=shops.filter(s=>s.st<2);const hiDoh=shops.filter(s=>s.doh>50);const fee=invData?.storageFee||0;a.push({s:"i",t:`Total FBA stock: ${N(tFba)} units across ${shops.length} shops`});if(crit>100)a.push({s:"c",t:`${crit} critical SKUs need restocking`});else if(crit>0)a.push({s:"w",t:`${crit} critical SKUs — monitor closely`});if(fee>5000)a.push({s:"w",t:`Storage fee ${$2(fee)}/month — consider liquidating aged inventory to reduce costs`});else if(fee>0)a.push({s:"i",t:`Storage fee ${$2(fee)}/month`});if(lowSt.length)a.push({s:"w",t:`${lowSt.length} shops with sell-through <2%: ${lowSt.map(s=>s.s).join(", ")}`});if(hiDoh.length)a.push({s:"i",t:`${hiDoh.length} shops with >50 days of health: ${hiDoh.map(s=>s.s).join(", ")} — consider reducing orders`});return a;}
 
 /* ═══════════ EXECUTIVE v4.5 ═══════════ */
+
+/* ═══════════ MINI DONUT — ASIN Distribution ═══════════ */
+const DONUT_COLORS=['#3B4A8A','#3DD68C','#FFB347','#60AFFF','#B494FF','#aaaaaa'];
+function MiniDonut({slices,t,size=72}){
+  const[hov,setHov]=useState(null);
+  const[tipPos,setTipPos]=useState({x:0,y:0});
+  const ref=React.useRef(null);
+  if(!slices||slices.length===0)return<div style={{width:size,height:size,borderRadius:'50%',background:t.tableBg,flexShrink:0}}/>;
+  const total=slices.reduce((s,d)=>s+Math.abs(d.value),0);
+  const hovSlice=hov!=null?slices[hov]:null;
+  const handleMouseMove=(e)=>{
+    if(!ref.current)return;
+    const rect=ref.current.getBoundingClientRect();
+    setTipPos({x:e.clientX-rect.left,y:e.clientY-rect.top});
+  };
+  return<div ref={ref} style={{position:'relative',flexShrink:0,width:size,height:size}} onMouseMove={handleMouseMove} onMouseLeave={()=>setHov(null)}>
+    <PieChart width={size} height={size}>
+      <Pie data={slices} cx={size/2-1} cy={size/2-1} innerRadius={size*0.32} outerRadius={size*0.48}
+        dataKey="value" startAngle={90} endAngle={-270} stroke="none"
+        onMouseEnter={(_,idx)=>setHov(idx)} onMouseLeave={()=>setHov(null)}>
+        {slices.map((s,i)=><Cell key={i} fill={i===slices.length-1&&s.label==='Others'?t.chartGrid:DONUT_COLORS[i%DONUT_COLORS.length]}
+          opacity={hov===null||hov===i?1:0.45}/>)}
+      </Pie>
+    </PieChart>
+    {/* Center label */}
+    <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
+      <div style={{fontSize:9,fontWeight:700,color:t.textMuted,lineHeight:1}}>Top 5</div>
+      <div style={{fontSize:8,color:t.textMuted,lineHeight:1.2}}>ASINs</div>
+    </div>
+    {/* Hover tooltip */}
+    {hovSlice&&ReactDOM.createPortal((()=>{
+      const rect=ref.current?.getBoundingClientRect();
+      if(!rect)return null;
+      const tx=Math.min(rect.left+tipPos.x+12, window.innerWidth-240);
+      const ty=rect.top+tipPos.y-10;
+      const pct=total>0?(Math.abs(hovSlice.value)/total*100).toFixed(1):'0';
+      return<div style={{position:'fixed',top:ty,left:tx,background:'#1e293b',color:'#f1f5f9',padding:'7px 10px',borderRadius:9,fontSize:11.5,zIndex:99999,boxShadow:'0 4px 20px rgba(0,0,0,.35)',pointerEvents:'none',minWidth:160,maxWidth:230}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+          <div style={{width:8,height:8,borderRadius:2,background:hovSlice.label==='Others'?t.chartGrid:DONUT_COLORS[hov%DONUT_COLORS.length],flexShrink:0}}/>
+          <span style={{fontWeight:700,fontSize:11,wordBreak:'break-all',lineHeight:1.3}}>{hovSlice.label}</span>
+          {hovSlice.label!=='Others'&&<button
+            onPointerDown={e=>{e.stopPropagation();navigator.clipboard?.writeText(hovSlice.label).catch(()=>{});}}
+            style={{marginLeft:'auto',background:'rgba(255,255,255,.15)',border:'none',borderRadius:4,color:'#f1f5f9',fontSize:10,padding:'2px 6px',cursor:'pointer',flexShrink:0,lineHeight:1.4}}
+            title="Copy ASIN">⎘</button>}
+        </div>
+        <div style={{fontSize:12,fontWeight:600,color:'#94a3b8'}}>{hovSlice.fmtV?hovSlice.fmtV(Math.abs(hovSlice.value)):hovSlice.value} <span style={{color:'#64748b',fontWeight:400}}>({pct}%)</span></div>
+      </div>;
+    })(),document.body)}
+  </div>;
+}
+
 function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,onAsinClick,splyEm,dailyLY,shopExt}){
   const[selMetrics,setSelMetrics]=useState(['SALES','ADV.COST','NET PROFIT','SESSIONS']);
   const[expandedRows,setExpandedRows]=useState(new Set());
@@ -225,18 +276,18 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   const sbToggle=key=>{sbVisible.includes(key)?sbRemove(key):sbAdd(key)};
 
   const ALL_PILLS=[
-    {id:'UNITS',label:'Units',val:em.units,fmtV:N,ch:()=>prevEm?pctChg(em.units,prevEm.units):undefined},
-    {id:'SALES',label:'Revenue',val:em.sales,fmtV:$,ch:()=>prevEm?pctChg(em.sales,prevEm.sales):undefined},
-    {id:'ADV.COST',label:'Adv. Cost',val:Math.abs(em.advCost||0),fmtV:$,ch:()=>prevEm?pctChg(em.advCost,prevEm.advCost):undefined},
-    {id:'NET PROFIT',label:'Net Profit',val:em.netProfit,fmtV:$,ch:()=>prevEm?pctChg(em.netProfit,prevEm.netProfit):undefined},
-    {id:'SESSIONS',label:'Sessions',val:Math.round(em.sessions||0),fmtV:N,ch:()=>prevEm?pctChg(em.sessions,prevEm.sessions):undefined},
-    {id:'CR%',label:'CR%',val:cr,fmtV:v=>v.toFixed(2)+'%',ch:()=>undefined},
-    {id:'TACoS',label:'TACoS',val:tacos,fmtV:v=>v.toFixed(2)+'%',ch:()=>undefined},
-    {id:'MARGIN',label:'Margin',val:em.margin||0,fmtV:v=>v.toFixed(2)+'%',ch:()=>prevEm?((em.margin||0)-(prevEm.margin||0)):undefined},
-    {id:'AOV',label:'AOV',val:aov,fmtV:$2,ch:()=>undefined},
-    {id:'PROFIT/UNIT',label:'Profit/Unit',val:profitPerUnit,fmtV:$2,ch:()=>undefined},
-    {id:'REFUNDS',label:'Refunds',val:em.refunds||0,fmtV:N,ch:()=>prevEm?pctChg(em.refunds,prevEm.refunds):undefined},
-    {id:'PAYOUT',label:'Est. Payout',val:em.estPayout||0,fmtV:$,ch:()=>undefined},
+    {id:'UNITS',    label:'Units',       val:em.units,                  fmtV:N,  ch:()=>prevEm?pctChg(em.units,prevEm.units):undefined,       asinKey:'u'},
+    {id:'SALES',    label:'Revenue',     val:em.sales,                  fmtV:$,  ch:()=>prevEm?pctChg(em.sales,prevEm.sales):undefined,       asinKey:'r'},
+    {id:'ADV.COST', label:'Adv. Cost',   val:Math.abs(em.advCost||0),   fmtV:$,  ch:()=>prevEm?pctChg(em.advCost,prevEm.advCost):undefined,   asinKey:null},
+    {id:'NET PROFIT',label:'Net Profit', val:em.netProfit,              fmtV:$,  ch:()=>prevEm?pctChg(em.netProfit,prevEm.netProfit):undefined,asinKey:'n'},
+    {id:'SESSIONS', label:'Sessions',    val:Math.round(em.sessions||0),fmtV:N,  ch:()=>prevEm?pctChg(em.sessions,prevEm.sessions):undefined,  asinKey:null},
+    {id:'CR%',      label:'CR%',         val:cr,                        fmtV:v=>v.toFixed(2)+'%',ch:()=>undefined,                            asinKey:'cr'},
+    {id:'TACoS',    label:'TACoS',       val:tacos,                     fmtV:v=>v.toFixed(2)+'%',ch:()=>undefined,                            asinKey:'ac'},
+    {id:'MARGIN',   label:'Margin',      val:em.margin||0,              fmtV:v=>v.toFixed(2)+'%',ch:()=>prevEm?((em.margin||0)-(prevEm.margin||0)):undefined, asinKey:'m'},
+    {id:'AOV',      label:'AOV',         val:aov,                       fmtV:$2, ch:()=>undefined,                                            asinKey:null},
+    {id:'PROFIT/UNIT',label:'Profit/Unit',val:profitPerUnit,            fmtV:$2, ch:()=>undefined,                                            asinKey:null},
+    {id:'REFUNDS',  label:'Refunds',     val:em.refunds||0,             fmtV:N,  ch:()=>prevEm?pctChg(em.refunds,prevEm.refunds):undefined,   asinKey:null},
+    {id:'PAYOUT',   label:'Est. Payout', val:em.estPayout||0,           fmtV:$,  ch:()=>undefined,                                            asinKey:null},
   ];
   const togglePill=id=>setSelMetrics(prev=>
     prev.includes(id)?prev.filter(m=>m!==id):[...prev,id]
@@ -480,11 +531,31 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
         {selPillData.map((p,i)=>{
           const chgVal=p.ch();
           const isNP=p.id==='NET PROFIT';
+          const isIsPP=(p.id==='MARGIN');
           const valColor=isNP?(em.netProfit>=0?t.green:t.red):t.text;
-          return<div key={p.id} style={{flex:'1 1 180px',minWidth:160,background:t.primaryGhost,borderRadius:12,padding:'14px 16px',border:'2px solid '+t.primary+'44',position:'relative'}}>
-            <div style={{fontSize:10,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:.8,marginBottom:6}}>{p.label}</div>
-            <div style={{fontSize:20,fontWeight:800,color:valColor,lineHeight:1.1,marginBottom:chgVal!=null?5:0}}>{p.fmtV(p.val)}</div>
-            {chgVal!=null&&<div style={{fontSize:11,fontWeight:600,color:chgVal>=0?t.green:t.red}}>{chgVal>=0?'↑':'↓'}{Math.abs(chgVal).toFixed(1)}% <span style={{fontWeight:400,color:t.textMuted,fontSize:10}}>vs prev</span></div>}
+          // Build donut slices from fAsin
+          const donutSlices=useMemo?null:(()=>{})(); // can't use hooks here, compute inline
+          const asinSlices=(()=>{
+            if(!p.asinKey||!fAsin||fAsin.length===0)return[];
+            const sorted=[...fAsin].filter(a=>Math.abs(a[p.asinKey]||0)>0).sort((a,b)=>Math.abs(b[p.asinKey])-Math.abs(a[p.asinKey]));
+            const top5=sorted.slice(0,5);
+            const rest=sorted.slice(5);
+            const restVal=rest.reduce((s,a)=>s+Math.abs(a[p.asinKey]||0),0);
+            const slices=top5.map(a=>({label:a.a,value:Math.abs(a[p.asinKey]||0),fmtV:p.fmtV}));
+            if(restVal>0)slices.push({label:'Others',value:restVal,fmtV:p.fmtV});
+            return slices;
+          })();
+          return<div key={p.id} style={{flex:'1 1 195px',minWidth:175,background:t.primaryGhost,borderRadius:12,padding:'14px 16px',border:'2px solid '+t.primary+'44',position:'relative'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:10,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:.8,marginBottom:6}}>{p.label}<Tip text={''} t={t}/></div>
+                <div style={{fontSize:22,fontWeight:700,color:valColor,lineHeight:1.1,marginBottom:chgVal!=null?5:0,fontFamily:"'Georgia','Times New Roman',serif",letterSpacing:-.3}}>{p.fmtV(p.val)}</div>
+                {chgVal!=null&&<div style={{fontSize:11,fontWeight:600,color:(isIsPP?chgVal>=0:chgVal>=0)?t.green:t.red}}>
+                  {isIsPP?(chgVal>=0?'+':'')+chgVal.toFixed(2)+'pp':(chgVal>=0?'↑':'↓')+Math.abs(chgVal).toFixed(1)+'%'} <span style={{fontWeight:400,color:t.textMuted,fontSize:10}}>vs prev</span>
+                </div>}
+              </div>
+              {asinSlices.length>0&&<MiniDonut slices={asinSlices} t={t} size={72}/>}
+            </div>
             <button onClick={()=>togglePill(p.id)} style={{position:'absolute',top:8,right:8,background:'none',border:'none',cursor:'pointer',color:t.textMuted,fontSize:12,lineHeight:1,padding:'2px 4px',borderRadius:4}} title="Remove">✕</button>
           </div>;
         })}
