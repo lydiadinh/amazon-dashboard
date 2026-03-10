@@ -514,6 +514,90 @@ app.get('/api/inventory/by-shop', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+/* ═══════════ INVENTORY BY ASIN ═══════════ */
+app.get('/api/inventory/by-asin', async (req, res) => {
+  try {
+    const { store, seller } = req.query;
+    const shopMap = await getShopMap();
+    const accId = await storeToAccId(store);
+
+    // Build filters
+    let stockWhere = 'WHERE 1=1'; const stockParams = [];
+    if (accId) { stockWhere += ' AND s.accountId = ?'; stockParams.push(accId); }
+
+    let planWhere = 'WHERE f.date=(SELECT MAX(date) FROM fba_iventory_planning)'; const planParams = [];
+    if (accId) { planWhere += ' AND f.accountId = ?'; planParams.push(accId); }
+
+    // Seller filter via asin table
+    let sellerJoin = '', sellerWhere = '';
+    if (seller && seller !== 'All') {
+      sellerJoin = ' LEFT JOIN asin a ON s.asin COLLATE utf8mb4_0900_ai_ci = a.asin';
+      sellerWhere = ' AND a.seller = ?';
+      stockParams.push(seller);
+    }
+
+    // Main ASIN stock from seller_board_stock (snapshot)
+    const stockRows = await q(`SELECT s.asin, s.name, s.sku, s.accountId,
+      SUM(s.FBAStock) as fba,
+      SUM(COALESCE(s.reserved,0)) as reserved,
+      SUM(COALESCE(s.sentToFBA,0)) as sentToFBA,
+      SUM(COALESCE(s.stockValue,0)) as stockValue,
+      AVG(COALESCE(s.estimatedSalesVelocity,0)) as velocity,
+      MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft
+      FROM seller_board_stock s${sellerJoin}
+      ${stockWhere}${sellerWhere}
+      GROUP BY s.asin, s.name, s.sku, s.accountId
+      ORDER BY fba DESC LIMIT 300`, stockParams, 30000).catch(()=>[]);
+
+    // Storage fee + inbound from fba_iventory_planning (latest snapshot)
+    const planRows = await q(`SELECT f.asin, f.accountId,
+      SUM(CAST(f.available AS SIGNED)) as available,
+      SUM(COALESCE(f.inboundQuantity,0)) as inbound,
+      SUM(COALESCE(f.totalReservedQuantity,0)) as planReserved,
+      SUM(COALESCE(f.estimatedStorageCostNextMonth,0)) as storageFee,
+      AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply,
+      SUM(COALESCE(f.invAge0To90Days,0)) as age0_90,
+      SUM(COALESCE(f.invAge91To180Days,0)) as age91_180,
+      SUM(COALESCE(f.invAge181To270Days,0)) as age181_270,
+      SUM(COALESCE(f.invAge271To365Days,0)) as age271_365,
+      SUM(COALESCE(f.invAge365PlusDays,0)) as age365plus
+      FROM fba_iventory_planning f
+      ${planWhere}
+      GROUP BY f.asin, f.accountId`, planParams, 30000).catch(()=>[]);
+
+    // Build plan lookup: asin+accountId -> planRow
+    const planMap = {};
+    planRows.forEach(r => { planMap[r.asin+'_'+r.accountId] = r; });
+
+    const result = stockRows.map(r => {
+      const plan = planMap[r.asin+'_'+r.accountId] || {};
+      const fba = parseInt(r.fba)||0;
+      const available = parseInt(plan.available) ?? fba;
+      const reserved = parseInt(plan.planReserved) || parseInt(r.reserved)||0;
+      const inbound = parseInt(plan.inbound)||0;
+      const storageFee = parseFloat(plan.storageFee)||0;
+      const daysLeft = parseInt(r.daysLeft) || Math.round(parseFloat(plan.daysOfSupply)||0);
+      const aged = (parseInt(plan.age91_180)||0)+(parseInt(plan.age181_270)||0)+(parseInt(plan.age271_365)||0)+(parseInt(plan.age365plus)||0);
+      return {
+        asin: r.asin,
+        name: (r.name||'').substring(0,60),
+        sku: r.sku||'',
+        shop: shopMap[r.accountId]||`Account ${r.accountId}`,
+        accountId: r.accountId,
+        fba, available, reserved, inbound,
+        stockValue: parseFloat(r.stockValue)||0,
+        velocity: Math.round((parseFloat(r.velocity)||0)*100)/100,
+        daysLeft, storageFee,
+        aged, // units aged >90 days
+        oos45: daysLeft > 0 && daysLeft <= 45, // flag OOS risk
+      };
+    });
+
+    res.json(result);
+  } catch (e) { console.error('inventory/by-asin:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 /* ═══════════ PLAN DEBUG ═══════════ */
 /* ═══════════ DEBUG ENDPOINTS ═══════════ */
 app.get('/api/debug/all', async (req, res) => {
