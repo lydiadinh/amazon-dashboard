@@ -201,6 +201,9 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   const aov=em.orders>0?em.sales/em.orders:0;
   const profitPerUnit=em.units>0?em.netProfit/em.units:0;
 
+  const prevCr=prevEm&&prevEm.sessions>0?(prevEm.units/prevEm.sessions*100):0;
+  const prevTacos=prevEm&&prevEm.sales>0?(Math.abs(prevEm.advCost||0)/prevEm.sales*100):0;
+
   /* ── SELLERBOARD SUMMARY — chip definitions ── */
   const SB_ALL={
     sales:     {l:'Sales',     v:$2(em.sales),                       k:'sales',    profit:false, mw:148},
@@ -242,9 +245,6 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
 
   /* ── DETAILED METRICS (expandable) ── */
   const NEW_BADGE=<span style={{fontSize:8,fontWeight:700,color:'#fff',background:t.primary,padding:'1px 5px',borderRadius:5,marginLeft:5,letterSpacing:.5}}>NEW</span>;
-  // prevCr = CR% of prev period (for vs Prev Period comparison)
-  const prevCr=prevEm&&prevEm.sessions>0?(prevEm.units/prevEm.sessions*100):0;
-  const prevTacos=prevEm&&prevEm.sales>0?(Math.abs(prevEm.advCost||0)/prevEm.sales*100):0;
   // pvChg2: for metrics not directly in prevEm (computed values)
   const pv=(cur,prev)=>prev!=null&&prev!==0?((cur-prev)/Math.abs(prev)*100):undefined;
   const pvPP=(cur,prev)=>prev!=null?(cur-prev):undefined; // percentage point diff
