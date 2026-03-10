@@ -181,27 +181,46 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   const[showLY,setShowLY]=useState(false);
   const[groupBy,setGroupBy]=useState('ASIN');
   const[sortShop,setSortShop]=useState('Revenue');
+  // ── chip-based Sellerboard Summary ──
+  const[sbVisible,setSbVisible]=useState(['sales','orders','units','refunds','advCost','estPayout','netProfit']);
+  const[sbPickerOpen,setSbPickerOpen]=useState(false);
+  const sbPickerRef=React.useRef(null);
+  React.useEffect(()=>{
+    if(!sbPickerOpen)return;
+    const h=e=>{if(sbPickerRef.current&&!sbPickerRef.current.contains(e.target))setSbPickerOpen(false)};
+    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
+  },[sbPickerOpen]);
 
   const fmtD=d=>{try{return new Date(d+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}catch{return d}};
   const ch=k=>prevEm?pctChg(em[k],prevEm[k]):undefined;
   const splyChg=k=>{if(!splyEm||!splyEm[k])return undefined;return pctChg(em[k],splyEm[k])};
-
-  /* ── SELLERBOARD SUMMARY ── */
-  const smItems=[
-    {l:"Sales",k:"sales",v:$2(em.sales)},
-    {l:"Orders",k:"orders",v:N(em.orders)},
-    {l:"Units",k:"units",v:N(em.units)},
-    {l:"Refunds",k:"refunds",v:N(em.refunds)},
-    {l:"Adv. Cost",k:"advCost",v:$2(Math.abs(em.advCost||0))},
-    {l:"Est. Payout",k:"estPayout",v:$2(em.estPayout)},
-    {l:"Net Profit",k:"netProfit",v:$2(em.netProfit)},
-  ];
 
   /* ── SUMMARY METRIC PILLS ── */
   const cr=em.sessions>0?(em.units/em.sessions*100):0;
   const tacos=em.sales>0?(Math.abs(em.advCost||0)/em.sales*100):0;
   const aov=em.orders>0?em.sales/em.orders:0;
   const profitPerUnit=em.units>0?em.netProfit/em.units:0;
+
+  /* ── SELLERBOARD SUMMARY — chip definitions ── */
+  const SB_ALL={
+    sales:{l:'Sales',v:$2(em.sales),k:'sales',profit:false},
+    orders:{l:'Orders',v:N(em.orders),k:'orders'},
+    units:{l:'Units',v:N(em.units),k:'units'},
+    refunds:{l:'Refunds',v:N(em.refunds),k:'refunds'},
+    advCost:{l:'Adv. Cost',v:$2(Math.abs(em.advCost||0)),k:'advCost'},
+    estPayout:{l:'Est. Payout',v:$2(em.estPayout),k:'estPayout'},
+    netProfit:{l:'Net Profit',v:$2(em.netProfit),k:'netProfit',profit:true},
+    tacos:{l:'TACoS',v:tacos.toFixed(2)+'%',k:'_tacos'},
+    margin:{l:'Margin',v:(em.margin||0).toFixed(2)+'%',k:'margin'},
+    sessions:{l:'Sessions',v:N(Math.round(em.sessions||0)),k:'sessions'},
+    cr:{l:'CR%',v:cr.toFixed(2)+'%',k:'_cr'},
+    aov:{l:'AOV',v:$2(aov),k:'_aov'},
+    shippingCost:{l:'Shipping',v:$2(Math.abs(em.shippingCost||0)),k:'shippingCost'},
+  };
+  const sbRemove=key=>{if(sbVisible.length<=1)return;setSbVisible(prev=>prev.filter(k=>k!==key))};
+  const sbAdd=key=>{if(!sbVisible.includes(key))setSbVisible(prev=>[...prev,key])};
+  const sbToggle=key=>{sbVisible.includes(key)?sbRemove(key):sbAdd(key)};
+
   const ALL_PILLS=[
     {id:'UNITS',label:'Units',val:em.units,fmtV:N,ch:()=>prevEm?pctChg(em.units,prevEm.units):undefined},
     {id:'SALES',label:'Revenue',val:em.sales,fmtV:$,ch:()=>prevEm?pctChg(em.sales,prevEm.sales):undefined},
@@ -344,24 +363,56 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   /* ═══ RENDER ═══ */
   return<div>
 
-    {/* ① SELLERBOARD SUMMARY + DETAIL DRAWER BUTTON */}
+    {/* ① SELLERBOARD SUMMARY — chip-based add/remove */}
     <Cd t={t} style={{borderLeft:'4px solid '+t.primary,marginBottom:showDetail?0:16,borderRadius:showDetail?'12px 12px 0 0':'12px',padding:'14px 18px'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div><div style={{fontSize:12,fontWeight:800,color:t.text,letterSpacing:.5}}>SELLERBOARD SUMMARY</div><div style={{fontSize:10,color:t.textMuted,marginTop:1}}>{fmtD(sd)} — {fmtD(ed)}</div></div>
-        <button onClick={()=>setShowDetail(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,background:showDetail?t.primary:t.primaryGhost,border:'1px solid '+(showDetail?t.primary:t.primary+'44'),color:showDetail?'#fff':t.primary,borderRadius:8,padding:'7px 14px',fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .15s',flexShrink:0}}>
+      {/* Header row */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:12}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:800,color:t.textSec,letterSpacing:1.2,textTransform:'uppercase'}}>Sellerboard Summary</div>
+          <div style={{fontSize:10,color:t.textMuted,marginTop:1}}>{fmtD(sd)} — {fmtD(ed)}</div>
+        </div>
+        <button onClick={()=>setShowDetail(v=>!v)} style={{display:'flex',alignItems:'center',gap:5,background:showDetail?t.primary:t.primaryGhost,border:'1px solid '+(showDetail?t.primary:t.primary+'44'),color:showDetail?'#fff':t.primary,borderRadius:8,padding:'6px 13px',fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .15s',flexShrink:0}}>
           Detail metrics <span style={{fontSize:10,transition:'transform .2s',display:'inline-block',transform:showDetail?'rotate(180deg)':'none'}}>▾</span>
         </button>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:mob?'repeat(3,1fr)':'repeat(7,1fr)',gap:mob?10:5}}>
-        {smItems.map((m,i)=>{
-          const pv=ch(m.k);const sy=splyChg(m.k);
-          return<div key={i} style={{textAlign:'center',padding:'8px 4px',borderRadius:8,background:t.primaryGhost}}>
-            <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5}}>{m.l}</div>
-            <div style={{fontSize:mob?13:14,fontWeight:700,color:m.l==='Net Profit'?(em.netProfit>=0?t.green:t.red):t.text,marginTop:3}}>{m.v}</div>
-            {pv!=null&&<div title={'vs '+((prevPeriod&&prevPeriod.s)?prevPeriod.s+' – '+prevPeriod.e:'prev period')} style={{fontSize:9,fontWeight:600,color:pv>=0?t.green:t.red,marginTop:2,cursor:'help'}}>{pv>=0?'↑':'↓'}{Math.abs(pv).toFixed(1)}% <span style={{color:t.textMuted,fontWeight:400}}>prev</span></div>}
-            {sy!=null&&<div style={{fontSize:9,fontWeight:600,color:sy>=0?'#3DD68C':'#FF9A8A',marginTop:1}}>{sy>=0?'↑':'↓'}{Math.abs(sy).toFixed(1)}% <span style={{fontWeight:400}}>LY</span></div>}
+
+      {/* Chips row */}
+      <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'flex-start'}}>
+        {sbVisible.map(key=>{
+          const m=SB_ALL[key];if(!m)return null;
+          const pv=ch(m.k);
+          const pvLabel=prevPeriod&&prevPeriod.s?prevPeriod.s+' – '+prevPeriod.e:'prev period';
+          return<div key={key} style={{display:'flex',alignItems:'center',gap:8,background:t.tableBg,border:'1px solid '+t.cardBorder,borderRadius:10,padding:'8px 10px',transition:'border-color .15s',minWidth:0}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.7,marginBottom:3}}>{m.l}</div>
+              <div style={{fontSize:15,fontWeight:700,color:m.profit?(em.netProfit>=0?t.green:t.red):t.text,fontFamily:'monospace',lineHeight:1,whiteSpace:'nowrap'}}>{m.v}</div>
+              {pv!=null?<div title={'vs '+pvLabel} style={{fontSize:10,fontWeight:600,color:pv>=0?t.green:t.red,marginTop:3,cursor:'help'}}>{pv>=0?'↑':'↓'}{Math.abs(pv).toFixed(1)}% <span style={{color:t.textMuted,fontWeight:400,fontSize:9}}>prev</span></div>:<div style={{fontSize:10,color:t.textMuted,marginTop:3}}>—</div>}
+            </div>
+            <button onClick={()=>sbRemove(key)} title="Remove" style={{width:17,height:17,borderRadius:'50%',border:'1px solid '+t.inputBorder,background:t.card,color:t.textMuted,fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,lineHeight:1,transition:'all .12s',padding:0}}
+              onMouseEnter={e=>{e.currentTarget.style.background='#e53e3e';e.currentTarget.style.borderColor='#e53e3e';e.currentTarget.style.color='#fff';}}
+              onMouseLeave={e=>{e.currentTarget.style.background=t.card;e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textMuted;}}>✕</button>
           </div>;
         })}
+
+        {/* ＋ Add metric picker */}
+        <div ref={sbPickerRef} style={{position:'relative',alignSelf:'center'}}>
+          <button onClick={()=>setSbPickerOpen(v=>!v)} style={{display:'flex',alignItems:'center',gap:5,background:'transparent',border:'1px dashed '+t.inputBorder,borderRadius:10,padding:'7px 14px',fontSize:11,fontWeight:600,color:t.textMuted,cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary;e.currentTarget.style.background=t.primaryGhost;}}
+            onMouseLeave={e=>{if(!sbPickerOpen){e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textMuted;e.currentTarget.style.background='transparent';}}}>
+            ＋ Add metric
+          </button>
+          {sbPickerOpen&&<div style={{position:'absolute',top:'calc(100% + 6px)',left:0,background:t.card,border:'1px solid '+t.cardBorder,borderRadius:12,boxShadow:'0 8px 32px '+t.shadow,padding:12,zIndex:999,minWidth:260}}>
+            <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1,color:t.textMuted,marginBottom:8}}>Show / hide metrics</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+              {Object.entries(SB_ALL).map(([key,m])=>{
+                const on=sbVisible.includes(key);
+                return<button key={key} onClick={()=>sbToggle(key)} style={{padding:'5px 12px',borderRadius:20,fontSize:11,fontWeight:on?600:500,cursor:'pointer',border:'1px solid '+(on?t.primary:t.inputBorder),color:on?t.primary:t.textSec,background:on?t.primaryGhost:'transparent',transition:'all .12s'}}>
+                  {m.l}{on?' ✓':''}
+                </button>;
+              })}
+            </div>
+          </div>}
+        </div>
       </div>
     </Cd>
 
