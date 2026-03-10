@@ -544,7 +544,9 @@ app.get('/api/inventory/by-asin', async (req, res) => {
       SUM(COALESCE(s.sentToFBA,0)) as sentToFBA,
       SUM(COALESCE(s.stockValue,0)) as stockValue,
       AVG(COALESCE(s.estimatedSalesVelocity,0)) as velocity,
-      MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft
+      MIN(NULLIF(s.daysOfStockLeft,0)) as daysLeft,
+      MAX(COALESCE(s.price,0)) as salePrice,
+      MAX(COALESCE(s.businessPrice,0)) as businessPrice
       FROM seller_board_stock s${sellerJoin}
       ${stockWhere}${sellerWhere}
       GROUP BY s.asin, s.name, s.sku, s.accountId
@@ -556,6 +558,8 @@ app.get('/api/inventory/by-asin', async (req, res) => {
       SUM(COALESCE(f.inboundQuantity,0)) as inbound,
       SUM(COALESCE(f.totalReservedQuantity,0)) as planReserved,
       SUM(COALESCE(f.estimatedStorageCostNextMonth,0)) as storageFee,
+      SUM(COALESCE(f.estimatedLongTermStorageFee,0)) as longTermFee,
+      SUM(COALESCE(f.unfulfillableQuantity,0)) as unfulfillable,
       AVG(COALESCE(f.daysOfSupply,0)) as daysOfSupply,
       SUM(COALESCE(f.invAge0To90Days,0)) as age0_90,
       SUM(COALESCE(f.invAge91To180Days,0)) as age91_180,
@@ -589,8 +593,17 @@ app.get('/api/inventory/by-asin', async (req, res) => {
         stockValue: parseFloat(r.stockValue)||0,
         velocity: Math.round((parseFloat(r.velocity)||0)*100)/100,
         daysLeft, storageFee,
+        longTermFee: parseFloat(plan.longTermFee)||0,
+        unfulfillable: parseInt(plan.unfulfillable)||0,
+        salePrice: parseFloat(r.salePrice)||0,
+        businessPrice: parseFloat(r.businessPrice)||0,
+        age0_90: parseInt(plan.age0_90)||0,
+        age91_180: parseInt(plan.age91_180)||0,
+        age181_270: parseInt(plan.age181_270)||0,
+        age271_365: parseInt(plan.age271_365)||0,
+        age365plus: parseInt(plan.age365plus)||0,
         aged, // units aged >90 days
-        oos45: daysLeft > 0 && daysLeft <= 45, // flag OOS risk
+        oos45: daysLeft > 0 && daysLeft <= 45,
       };
     });
 
