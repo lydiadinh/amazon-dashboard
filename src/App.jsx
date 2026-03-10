@@ -155,7 +155,7 @@ function TrendChart({data,t,h=240,keys}){
 }
 
 /* ═══════════ ALERTS ═══════════ */
-function Alerts({alerts,t}){return<Cd t={t}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><span style={{fontSize:12,fontWeight:700,color:t.orange}}>!</span><span style={{fontSize:12,fontWeight:700,color:t.orange}}>Alerts & Anomalies</span></div>{alerts.map((a,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 0",borderTop:i?"1px solid "+t.divider:"none"}}><div style={{width:6,height:6,borderRadius:3,marginTop:5,background:a.s==="c"?t.red:a.s==="w"?t.orange:t.blue,flexShrink:0}}/><span style={{fontSize:11,color:t.textSec,lineHeight:1.5}}>{a.t}</span></div>)}</Cd>}
+function Alerts({alerts,t}){return<Cd t={t} style={{padding:"14px 18px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12}}><span style={{fontSize:14,fontWeight:800,color:t.orange}}>!</span><span style={{fontSize:13,fontWeight:700,color:t.orange,letterSpacing:.3}}>Alerts & Anomalies</span></div>{alerts.map((a,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",borderTop:i?"1px solid "+t.divider:"none"}}><div style={{width:7,height:7,borderRadius:3.5,marginTop:4,background:a.s==="c"?t.red:a.s==="w"?t.orange:t.blue,flexShrink:0}}/><span style={{fontSize:12.5,color:t.textSec,lineHeight:1.6}}>{a.t}</span></div>)}</Cd>}
 
 function genAlerts(fAsin,t,extra){
   const alerts=[];const neg=fAsin.filter(a=>a.n<0);const hiAcos=fAsin.filter(a=>a.ac>50);const top=[...fAsin].sort((a,b)=>b.n-a.n)[0];
@@ -707,31 +707,31 @@ function InvPage({t,mob,invData,invShop,invTrend,invFeeMonthly,invAsin,onAsinCli
     {(()=>{
       const doh=Math.round(d.avgDaysOfSupply||0);
       const crit=d.criticalSkus||0;
+      // cols: [label, value, color, tip, sub, flex-weight]
       const metrics=[
-        {label:"FBA Stock",    value:N(d.fbaStock||0),      icon:"📦", color:t.primary,  tip:TIPS.fbaStock,    sub:"total units"},
-        {label:"Available",    value:N(d.availableInv||0),  icon:"✅", color:t.green,    tip:TIPS.invAvail,    sub:"ready to ship"},
-        {label:"Reserved",     value:N(d.reserved||0),      icon:"🔒", color:t.orange,   tip:TIPS.invReserved, sub:"held by Amazon"},
-        {label:"Inbound",      value:N(d.inbound||0),       icon:"🚚", color:t.blue,     tip:TIPS.invInbound,  sub:"in transit"},
-        {label:"Critical SKUs",value:N(crit),               icon:"⚠️", color:crit>0?t.red:t.green, tip:TIPS.invCritical, sub:crit>0?"need restock":"all healthy"},
-        {label:"Days of Supply",value:doh>0?doh+"d":"—",   icon:"📅", color:doh>0&&doh<30?t.red:doh<60?t.orange:t.green, tip:TIPS.invDaysSupply, sub:doh<30?"restock soon":doh<60?"monitor":"healthy"},
-        {label:"Storage Fee",  value:$2(fee),               icon:"💰", color:fee>10000?t.red:fee>5000?t.orange:t.text, tip:TIPS.storageFee, sub:"per month"},
+        {label:"FBA Stock",     value:N(d.fbaStock||0),     color:t.primary,                          tip:TIPS.fbaStock,    sub:"total units",    w:1.4},
+        {label:"Available",     value:N(d.availableInv||0), color:t.green,                            tip:TIPS.invAvail,    sub:"ready to ship",  w:1.3},
+        {label:"Reserved",      value:N(d.reserved||0),     color:t.orange,                           tip:TIPS.invReserved, sub:"held by Amazon", w:1.1},
+        {label:"Inbound",       value:N(d.inbound||0),      color:t.blue,                             tip:TIPS.invInbound,  sub:"in transit",     w:1},
+        {label:"Critical SKUs", value:N(crit),              color:crit>0?t.red:t.green,               tip:TIPS.invCritical, sub:crit>0?"need restock":"all healthy", w:1.1},
+        {label:"Days of Supply",value:doh>0?doh+"d":"—",    color:doh>0&&doh<30?t.red:doh<60?t.orange:t.green, tip:TIPS.invDaysSupply, sub:doh<30?"restock soon":doh<60?"monitor":"healthy", w:1.2},
+        {label:"Storage Fee",   value:$2(fee),              color:fee>10000?t.red:fee>5000?t.orange:t.text, tip:TIPS.storageFee, sub:"per month", w:1.5},
       ];
-      return<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:0,marginBottom:16,background:t.card,borderRadius:16,border:"1px solid "+t.cardBorder,overflow:"hidden",boxShadow:"0 2px 12px "+t.shadow}}>
+      const totalW=metrics.reduce((s,m)=>s+m.w,0);
+      return<div style={{display:"flex",gap:0,marginBottom:16,background:t.card,borderRadius:16,border:"1px solid "+t.cardBorder,overflow:"hidden",boxShadow:"0 2px 12px "+t.shadow}}>
         {metrics.map((m,i)=><div key={i}
-          style={{padding:"18px 16px",borderRight:i<metrics.length-1?"1px solid "+t.divider:"none",position:"relative",transition:"background .15s",cursor:"default"}}
+          style={{flex:m.w,minWidth:0,padding:"16px 18px",borderRight:i<metrics.length-1?"1px solid "+t.divider:"none",position:"relative",transition:"background .15s",cursor:"default"}}
           onMouseEnter={e=>e.currentTarget.style.background=t.tableHover}
           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          {/* colored top accent bar */}
-          <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:m.color,borderRadius:"0 0 0 0",opacity:.7}}/>
-          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
-            <span style={{fontSize:14,lineHeight:1}}>{m.icon}</span>
-            <span style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:.8,whiteSpace:"nowrap"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:m.color,opacity:.75}}/>
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:9}}>
+            <span style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
               {m.label}
             </span>
             {m.tip&&<Tip text={m.tip} t={t}/>}
           </div>
-          <div style={{fontSize:22,fontWeight:800,color:m.color,letterSpacing:-.5,lineHeight:1,marginBottom:4}}>{m.value}</div>
-          <div style={{fontSize:10,color:t.textMuted,fontWeight:500}}>{m.sub}</div>
+          <div style={{fontSize:21,fontWeight:700,color:m.color,letterSpacing:-.3,lineHeight:1,marginBottom:5,fontFamily:"'Georgia','Times New Roman',serif"}}>{m.value}</div>
+          <div style={{fontSize:10,color:t.textMuted,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.sub}</div>
         </div>)}
       </div>;
     })()}
