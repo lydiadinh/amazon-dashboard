@@ -231,7 +231,9 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
 
   const DETAIL_ROWS=[
     // ── Sellerboard order ──
-    {id:'sales',    label:'Sales',         val:em.sales,                         fmt:$2,  tip:TIPS.sales,     pvk:'sales',    sub:[]},
+    {id:'sales',    label:'Sales',         val:em.sales,                         fmt:$2,  tip:TIPS.sales,     pvk:'sales',    sub:[
+      {l:'Organic',v:em.salesOrganic||0,fmt:$2},{l:'Sponsored (PPC)',v:em.salesPPC||0,fmt:$2},
+    ]},
     {id:'units',    label:'Units',         val:em.units,                         fmt:N,   tip:TIPS.units,     pvk:'units',    sub:[
       {l:'Organic',v:em.unitsOrganic||0,fmt:N},{l:'Sponsored (PPC)',v:em.unitsSP||0,fmt:N},
     ]},
@@ -275,7 +277,8 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   /* ── SHOP SECTION ── */
   const SHOP_COLORS_REV=[t.primary,'#4C6EF5','#748FFC','#91A7FF','#BAC8FF','#DEE2FF','#EDF2FF'];
   const SHOP_COLORS_ADS=['#FF922B','#FFA94D','#FFD43B','#FFE066','#FFF3BF','#FFEC99','#FFF8DB'];
-  const SHOP_COLORS_PROFIT=fShop.map(s=>(s.n||0)>=0?t.green:t.red);
+  const PROFIT_PALETTE=['#12b886','#4c6ef5','#f76707','#7048e8','#e67700','#0ca678','#c92a2a','#1971c2'];
+  const SHOP_COLORS_PROFIT=fShop.map((s,i)=>(s.n||0)<0?t.red:PROFIT_PALETTE[i%PROFIT_PALETTE.length]);
   const donutColors={rev:SHOP_COLORS_REV,ads:SHOP_COLORS_ADS,profit:SHOP_COLORS_PROFIT};
   const tRev=fShop.reduce((s,x)=>s+x.r,0);
   const tAds=fShop.reduce((s,x)=>s+Math.abs(x.n_ads||0),0);
@@ -283,7 +286,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
   const donutData={
     rev:fShop.slice(0,8).map((s,i)=>({name:s.s,value:s.r,fill:SHOP_COLORS_REV[i%7]})),
     ads:fShop.slice(0,8).map((s,i)=>({name:s.s,value:Math.abs(s.n_ads||0),fill:SHOP_COLORS_ADS[i%7]})),
-    profit:fShop.slice(0,8).map((s,i)=>({name:s.s,value:s.n||0,fill:(s.n||0)>=0?t.green:t.red})),
+    profit:fShop.slice(0,8).map((s,i)=>({name:s.s,value:s.n||0,fill:(s.n||0)<0?t.red:PROFIT_PALETTE[i%PROFIT_PALETTE.length]})),
   };
   if(fShop.length>8){
     const rest=fShop.slice(8);
@@ -470,20 +473,20 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
             <button onClick={()=>setShopView('chart')} style={{padding:'4px 10px',borderRadius:7,border:'1px solid '+(shopView==='chart'?t.primary:t.inputBorder),background:shopView==='chart'?t.primary+'14':'transparent',color:shopView==='chart'?t.primary:t.textSec,fontSize:10,fontWeight:600,cursor:'pointer'}}>Chart</button>
           </div>
         </div>
-        {shopView==='table'?<div style={{overflowX:'auto',maxHeight:420,overflowY:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12.5}}>
+        {shopView==='table'?<div style={{overflowX:'auto',maxHeight:560,overflowY:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:13.5}}>
             <thead><tr style={{position:'sticky',top:0,zIndex:2}}>
-              {['Shop','Revenue','GP','Ads','Units','Margin','FBA Stock','% Rev'].map((h,i)=><th key={i} style={{padding:'9px 12px',textAlign:i===0?'left':'right',fontSize:10,fontWeight:700,color:t.textMuted,textTransform:'uppercase',borderBottom:'2px solid '+t.divider,background:t.tableBg,whiteSpace:'nowrap'}}>{h}</th>)}
+              {['Shop','Revenue','GP','Ads','Units','Margin','FBA Stock','% Rev'].map((h,i)=><th key={i} style={{padding:'9px 12px',textAlign:i===0?'left':'right',fontSize:11,fontWeight:700,color:t.textMuted,textTransform:'uppercase',borderBottom:'2px solid '+t.divider,background:t.tableBg,whiteSpace:'nowrap'}}>{h}</th>)}
             </tr></thead>
             <tbody>{sortedShop.map((r,i)=><tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <td style={{padding:'8px 12px',fontWeight:700,borderBottom:'1px solid '+t.divider}}>{r.s}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{$(r.r)}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:(r.gp||r.n||0)>=0?t.green:t.red,borderBottom:'1px solid '+t.divider}}>{$(r.gp||r.n||0)}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{$(Math.abs(r.ad||0))}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{N(r.u||0)}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',color:mC(r.m,t),fontWeight:600,borderBottom:'1px solid '+t.divider}}>{(r.m||0).toFixed(1)}%</td>
-              <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{N(r.f||0)}</td>
-              <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider,color:t.textMuted,fontSize:11}}>{tRev>0?(r.r/tRev*100).toFixed(1)+'%':'—'}</td>
+              <td style={{padding:'10px 12px',fontWeight:700,borderBottom:'1px solid '+t.divider}}>{r.s}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{$(r.r)}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:(r.gp||r.n||0)>=0?t.green:t.red,borderBottom:'1px solid '+t.divider}}>{$(r.gp||r.n||0)}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{$(Math.abs(r.ad||0))}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{N(r.u||0)}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',color:mC(r.m,t),fontWeight:600,borderBottom:'1px solid '+t.divider}}>{(r.m||0).toFixed(1)}%</td>
+              <td style={{padding:'10px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider}}>{N(r.f||0)}</td>
+              <td style={{padding:'10px 12px',textAlign:'right',borderBottom:'1px solid '+t.divider,color:t.textMuted,fontSize:12}}>{tRev>0?(r.r/tRev*100).toFixed(1)+'%':'—'}</td>
             </tr>)}
           </tbody></table>
         </div>:<div style={{padding:12}}>
@@ -512,8 +515,8 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
               {donutData[donutTab].map((e,i)=><Cell key={i} fill={e.fill}/>)}
             </Pie><Tooltip formatter={v=>'$'+Math.abs(v).toLocaleString()}/></PieChart>
           </ResponsiveContainer>
-          <div style={{marginTop:8,maxHeight:120,overflowY:'auto'}}>
-            {donutData[donutTab].map((d,i)=>{const tot=Math.abs(donutTotal[donutTab]);return<div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:10,color:t.textSec,padding:'3px 0',borderBottom:i<donutData[donutTab].length-1?'1px solid '+t.divider:'none'}}>
+          <div style={{marginTop:8,maxHeight:200,overflowY:'auto'}}>
+            {donutData[donutTab].map((d,i)=>{const tot=Math.abs(donutTotal[donutTab]);return<div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:11,color:t.textSec,padding:'4px 0',borderBottom:i<donutData[donutTab].length-1?'1px solid '+t.divider:'none'}}>
               <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:7,height:7,borderRadius:2,background:d.fill,flexShrink:0}}/><span style={{maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.name}</span></div>
               <span style={{fontWeight:600}}>{tot>0?(Math.abs(d.value)/tot*100).toFixed(1)+'%':'—'}</span>
             </div>;})}
@@ -1663,7 +1666,7 @@ export default function App(){
     return()=>{cancelled=true};
   },[planTrigger]);
 
-  const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n})),[fShopData]);
+  const fShopRev=useMemo(()=>fShopData.map(s=>({s:s.s,r:s.r,n:s.n,gp:s.gp,ad:s.ad,m:s.m,u:s.u,f:s.f,n_ads:s.ad})),[fShopData]);
 
   const pctChg=useCallback((cur,prev)=>{if(prev==null||prev===0)return undefined;return((cur-prev)/Math.abs(prev))*100},[]);
 
