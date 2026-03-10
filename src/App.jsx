@@ -1148,6 +1148,18 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
   const kpiRoas={a:kpiData.ad.a>0?kpiData.rv.a/kpiData.ad.a:null,p:kpiData.ad.p>0?kpiData.rv.p/kpiData.ad.p:null};
   const kpiMargin={a:kpiData.rv.a>0?kpiData.gp.a/kpiData.rv.a*100:null,p:kpiData.rv.p>0?kpiData.gp.p/kpiData.rv.p*100:null};
 
+  // ── YTD Plan helper ──────────────────────────────────────────────────────────
+  // Khi filter "All months": chỉ cộng plan của các tháng đã có actual data,
+  // tránh so YTD actual vs full-year plan (gây ra -1487% / 25% sai lệch)
+  const getYtdPlan=(r,field/*"gp"|"rp"|"ap"|"up"*/)=>{
+    if(planMonth!=="All") return r[field]||0; // đã filter 1 tháng, dùng thẳng
+    if(!r.mData) return r[field]||0;          // fallback nếu không có mData
+    const actualKey={gp:"ga",rp:"ra",ap:"aa",up:"ua"}[field]||"ga";
+    return Object.values(r.mData)
+      .filter(m=>(m[actualKey]||0)+(m.ra||0)>0)   // tháng có actual
+      .reduce((s,m)=>s+(m[field]||0),0);
+  };
+
   // Base ASIN data filtered by month
   const basePlanBk=useMemo(()=>{
     const raw=asinPlanBkData||[];
@@ -1167,13 +1179,15 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
     return rows;
   },[basePlanBk,colBrand,colSeller]);
 
-  // Add computed fields
+  // Add computed fields — dùng YTD plan cho % Plan
   const bkWithMetrics=useMemo(()=>fPlanBk.map(r=>{
     const _roas=r.aa>0?r.ra/r.aa:null;
     const _margin=r.ra>0?(r.ga/r.ra)*100:null;
-    const _pctGp=r.gp>0?Math.round((r.ga/r.gp)*100):null;
-    return{...r,_roas,_margin,_pctGp};
-  }),[fPlanBk]);
+    const gpPlan=getYtdPlan(r,"gp");
+    const _pctGp=gpPlan>0?Math.round((r.ga/gpPlan)*100):null;
+    const _gpPlanYtd=gpPlan; // lưu lại để hiện tooltip
+    return{...r,_roas,_margin,_pctGp,_gpPlanYtd};
+  }),[fPlanBk,planMonth]);
 
   // Apply search + sort
   const bkRows=useMemo(()=>{
@@ -1185,12 +1199,13 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
     });
   },[bkWithMetrics,bkSearch,bkSortCol,bkSortDir]);
 
-  // Alerts (from all basePlanBk, not column-filtered)
+  // Alerts — cũng dùng YTD plan
   const alertRows=useMemo(()=>basePlanBk.map(r=>{
-    const pctGp=r.gp>0?Math.round((r.ga/r.gp)*100):null;
+    const gpPlan=getYtdPlan(r,"gp");
+    const pctGp=gpPlan>0?Math.round((r.ga/gpPlan)*100):null;
     if(pctGp===null||pctGp>=100)return null;
-    return{...r,pctGp,_roas:r.aa>0?r.ra/r.aa:null,_margin:r.ra>0?(r.ga/r.ra)*100:null,gpGap:r.gp-r.ga};
-  }).filter(Boolean).sort((a,b)=>a.pctGp-b.pctGp),[basePlanBk]);
+    return{...r,pctGp,_roas:r.aa>0?r.ra/r.aa:null,_margin:r.ra>0?(r.ga/r.ra)*100:null,gpGap:gpPlan-r.ga};
+  }).filter(Boolean).sort((a,b)=>a.pctGp-b.pctGp),[basePlanBk,planMonth]);
 
   const critAlerts=alertRows.filter(a=>a.pctGp<75);
   const warnAlerts=alertRows.filter(a=>a.pctGp>=75);
@@ -1239,7 +1254,7 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
 
     {/* ── Alert banner ── */}
     {alertRows.length>0&&(()=>{
-      const totGpA=basePlanBk.reduce((s,r)=>s+r.ga,0),totGpP=basePlanBk.reduce((s,r)=>s+r.gp,0);
+      const totGpA=basePlanBk.reduce((s,r)=>s+r.ga,0),totGpP=basePlanBk.reduce((s,r)=>s+getYtdPlan(r,"gp"),0);
       const gpPct=totGpP>0?Math.round(totGpA/totGpP*100):0;
       return<div style={{background:t.redBg,border:"1px solid "+t.red+"33",borderRadius:10,padding:"9px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span style={{fontSize:16}}>⚠️</span>
@@ -1335,7 +1350,7 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>
                   {r._pctGp!=null?<span style={{background:pc+"22",color:pc,padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:700}}>{r._pctGp}%</span>:<span style={{color:t.textMuted}}>—</span>}
                 </td>
-                <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r.gp} t={t}/></td>
+                <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r._gpPlanYtd??r.gp} t={t}/></td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa} plan={r.ap} t={t} reverse/></td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua} plan={r.up} t={t} isMoney={false}/></td>
