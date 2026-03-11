@@ -361,10 +361,10 @@ app.get('/api/inventory/snapshot', async (req, res) => {
 
     const rows = await q(`SELECT
       (SELECT MAX(date) FROM fba_iventory_planning) as snapshotDate,
-      SUM(CAST(available AS SIGNED)) as availableInv,
+      SUM(GREATEST(CAST(available AS SIGNED), 0)) as availableInv,
       SUM(COALESCE(totalReservedQuantity,0)) as reserved, SUM(COALESCE(inboundQuantity,0)) as inbound,
       COUNT(DISTINCT CASE WHEN daysOfSupply<=30 THEN sku END) as criticalSkus,
-      AVG(COALESCE(daysOfSupply,0)) as avgDaysOfSupply,
+      AVG(CASE WHEN daysOfSupply > 0 THEN daysOfSupply ELSE NULL END) as avgDaysOfSupply,
       SUM(COALESCE(invAge0To90Days,0)) as a0,
       SUM(COALESCE(invAge91To180Days,0)) as a91, SUM(COALESCE(invAge181To270Days,0)) as a181,
       SUM(COALESCE(invAge271To365Days,0)) as a271, SUM(COALESCE(invAge365PlusDays,0)) as a365,
@@ -375,7 +375,8 @@ app.get('/api/inventory/snapshot', async (req, res) => {
     const avail=parseInt(r.availableInv)||0;
     const reserved=parseInt(r.reserved)||0;
     const inbound=parseInt(r.inbound)||0;
-    // FBA Stock: prefer seller_board_stock, fallback to available+reserved
+    // FBA Stock = Available + Reserved (inbound not yet at FC)
+    // Prefer seller_board_stock snapshot; fallback to fba_iventory_planning sum
     const fbaStock = fbaFromStock > 0 ? fbaFromStock : (avail + reserved);
     res.json({
       snapshotDate: r.snapshotDate ? String(r.snapshotDate).slice(0,10) : null,
@@ -484,7 +485,7 @@ app.get('/api/inventory/by-shop', async (req, res) => {
     } catch(e) { /* ok */ }
 
     // Inventory planning data (for inbound, reserved, critical SKUs)
-    const inv = await q(`SELECT f.accountId, SUM(CAST(f.available AS SIGNED)) as avail, SUM(COALESCE(f.inboundQuantity,0)) as inb, SUM(COALESCE(f.totalReservedQuantity,0)) as res, COUNT(DISTINCT CASE WHEN f.daysOfSupply<=30 THEN f.sku END) as crit
+    const inv = await q(`SELECT f.accountId, SUM(GREATEST(CAST(f.available AS SIGNED), 0)) as avail, SUM(COALESCE(f.inboundQuantity,0)) as inb, SUM(COALESCE(f.totalReservedQuantity,0)) as res, COUNT(DISTINCT CASE WHEN f.daysOfSupply<=30 THEN f.sku END) as crit
       FROM fba_iventory_planning f WHERE f.date=(SELECT MAX(date) FROM fba_iventory_planning)${accFilter}
       GROUP BY f.accountId`, accParams).catch(()=>[]);
 
