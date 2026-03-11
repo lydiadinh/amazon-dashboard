@@ -513,9 +513,9 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   },[fAsin,fShop,t]);
 
   /* ═══ ZONE A — TILE DRAWER STATE ═══ */
-  const[openTile,setOpenTile]=useState(null); // id of currently open tile
+  const[openTiles,setOpenTiles]=useState(new Set());
   const[tileExpandedRows,setTileExpandedRows]=useState({});
-  const toggleTile=id=>setOpenTile(prev=>prev===id?null:id);
+  const toggleTile=id=>setOpenTiles(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
   const toggleTileRow=(tileId,rowId)=>setTileExpandedRows(prev=>{
     const s=new Set(prev[tileId]||[]);
     s.has(rowId)?s.delete(rowId):s.add(rowId);
@@ -598,7 +598,6 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
       <div style={{display:'flex',overflowX:'auto',alignItems:'stretch'}}>
         {zoneALoading&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>Loading...</div>}
         {!zoneALoading&&zoneATileData.map((tile,ti)=>{
-          const isOpen=openTile===tile.id;
           const tileColor=TILE_COLORS[ti%TILE_COLORS.length];
           const tileNP=tile.em?.netProfit||0;
           const tileSales=tile.em?.sales||0;
@@ -635,24 +634,22 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
                 <div style={{fontSize:10,fontWeight:600,color:tileNP>=0?t.green:t.red}}>{tile.em?.margin!=null?((tile.em.margin||0).toFixed(1)+'%'):'—'} margin</div>
               </div>
             </div>
-            {/* More button — always pinned at bottom, never shifts other tiles */}
-            <button onClick={()=>toggleTile(tile.id)} style={{width:'100%',padding:'8px 0 7px',background:isOpen?t.primaryGhost:'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:700,color:isOpen?t.primary:t.textSec,cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s'}}>
-              {isOpen?'Less ▴':'More ▾'}
+            {/* More button — pinned at bottom, no layout shift */}
+            <button onClick={()=>toggleTile(tile.id)} style={{width:'100%',padding:'8px 0 7px',background:openTiles.has(tile.id)?t.primaryGhost:'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:700,color:openTiles.has(tile.id)?t.primary:t.textSec,cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s'}}>
+              {openTiles.has(tile.id)?'Less ▴':'More ▾'}
             </button>
           </div>;
         })}
         {!zoneALoading&&zoneATileData.length===0&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select a preset above and ensure DB is connected.</div>}
       </div>
 
-      {/* Detail panel — renders BELOW all tiles, full width, no layout shift */}
-      {openTile&&(()=>{
-        const tile=zoneATileData.find(t=>t.id===openTile);
-        if(!tile)return null;
+      {/* Detail panels — render ALL open tiles stacked below the tile row */}
+      {zoneATileData.filter(tile=>openTiles.has(tile.id)).map((tile,pi)=>{
         const tileDR=buildDetailRows(tile.em, tile.detail||{});
-        const tileExpRows=tileExpandedRows[openTile]||new Set();
-        const tileIdx=zoneATileData.findIndex(t=>t.id===openTile);
+        const tileExpRows=tileExpandedRows[tile.id]||new Set();
+        const tileIdx=zoneATileData.findIndex(t=>t.id===tile.id);
         const tileColor=TILE_COLORS[tileIdx%TILE_COLORS.length];
-        return<div style={{borderTop:'2px solid '+tileColor,background:t.tableBg}}>
+        return<div key={tile.id} style={{borderTop:(pi===0?'2px':'1px')+' solid '+tileColor,background:t.tableBg}}>
           <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 18px 8px',borderBottom:'1px solid '+DIV}}>
             <div style={{width:10,height:10,borderRadius:3,background:tileColor,flexShrink:0}}/>
             <span style={{fontSize:12,fontWeight:700,color:t.text}}>{tile.label}</span>
@@ -669,7 +666,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
               const isNpLike=(row.id==='np'||row.id==='grossProfit');
               const valCol=isNpLike?(row.val>=0?t.green:t.red):t.text;
               return<React.Fragment key={ri}>
-                <tr onClick={()=>hasSub&&toggleTileRow(openTile,row.id)} style={{cursor:hasSub?'pointer':'default',borderBottom:'1px solid '+DIV}}
+                <tr onClick={()=>hasSub&&toggleTileRow(tile.id,row.id)} style={{cursor:hasSub?'pointer':'default',borderBottom:'1px solid '+DIV}}
                   onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <td style={{padding:'9px 18px',color:S,fontSize:12,fontWeight:500,whiteSpace:'nowrap'}}>
                     {hasSub&&<span style={{fontSize:9,color:t.primary,marginRight:5}}>{isExp?'▼':'▶'}</span>}
@@ -685,7 +682,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
             })}</tbody>
           </table>
         </div>;
-      })()}
+      })}
 
     </div>
 
