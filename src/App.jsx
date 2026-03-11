@@ -739,7 +739,7 @@ function InvPage({t,mob,invData,invShop,invTrend,invFeeMonthly,invAsin,onAsinCli
   return<div>
     {/* Snapshot notice */}
     <Cd t={t} style={{padding:"10px 16px",marginBottom:14,borderLeft:"3px solid "+t.blue}}>
-      <div style={{fontSize:11,color:t.textSec}}>Latest inventory snapshot{d.snapshotDate?` — data from ${d.snapshotDate}`:""}.  No time filter needed.</div>
+      <div style={{fontSize:11,color:t.textSec}}>Latest inventory snapshot{d.snapshotDate ? ` — data from ${d.oldestDate && d.oldestDate !== d.snapshotDate ? `${d.oldestDate} to ${d.snapshotDate}` : d.snapshotDate}` : ""}. No time filter needed.</div>
     </Cd>
 
     {/* ① KPI stat strip */}
@@ -806,7 +806,7 @@ function InvPage({t,mob,invData,invShop,invTrend,invFeeMonthly,invAsin,onAsinCli
         <ResponsiveContainer width="100%" height={Math.max(200,invShop.length*36)}>
           <BarChart data={[...invShop].sort((a,b)=>b.fba-a.fba).map(r=>({
             name:r.s,
-            Available:Math.max(0,r.fba-r.res-r.inb),
+            Available:r.avail,
             Inbound:r.inb,
             Reserved:r.res,
           }))} layout="vertical" margin={{left:8,right:40,top:4,bottom:4}} barSize={16} barCategoryGap="22%">
@@ -830,7 +830,7 @@ function InvPage({t,mob,invData,invShop,invTrend,invFeeMonthly,invAsin,onAsinCli
               ))}
             </tr></thead>
             <tbody>{[...invShop].sort((a,b)=>b.fba-a.fba).map((r,i)=>{
-              const avail=Math.max(0,r.fba-r.res);
+              const avail=r.avail;
               return<tr key={i} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 <td style={{padding:'8px 12px',fontWeight:700,borderBottom:'1px solid '+t.divider}}>{r.s}</td>
                 <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,borderBottom:'1px solid '+t.divider}}>{N(r.fba)}</td>
@@ -2323,7 +2323,7 @@ export default function App(){
             }
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
-          api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
+          api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
           api("inventory/stock-trend",{store}).then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))).catch(()=>{});
           api("inventory/storage-monthly",{store}).then(d=>setInvFeeMonthly(d||[])).catch(()=>{});
           api("inventory/by-asin",{store}).then(d=>setInvAsin(d||[])).catch(()=>{});
@@ -2386,7 +2386,7 @@ export default function App(){
     // Re-fetch inventory when store changes
     if(!cancelled){
       api("inventory/snapshot",{store:_st}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
-      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
+      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
       api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
       api("inventory/storage-monthly",{store:_st}).then(d=>{if(!cancelled)setInvFeeMonthly(d||[])}).catch(()=>{});
       api("inventory/by-asin",{store:_st,seller:_sl}).then(d=>{if(!cancelled)setInvAsin(d||[])}).catch(()=>{});
