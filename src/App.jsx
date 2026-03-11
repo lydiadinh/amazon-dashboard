@@ -1051,7 +1051,8 @@ function PlanAlertsTab({alerts,t,onAsinClick}){
           <tbody>
             {pageRows.map((r,i)=>{
               const isCrit=r.pctGp<75;
-              const sevColor=isCrit?t.red:t.orange;
+              const isLoss=r.ga<0;
+              const sevColor=isLoss?t.red:isCrit?t.red:t.orange;
               return<tr key={i}
                 style={{background:i%2===1?t.tableHover+"88":"transparent",cursor:"pointer"}}
                 onMouseEnter={e=>e.currentTarget.style.background=t.tableHover}
@@ -1062,7 +1063,9 @@ function PlanAlertsTab({alerts,t,onAsinClick}){
                 <td style={{padding:"8px 10px",borderBottom:`1px solid ${t.divider}`,fontWeight:600,fontSize:11}}>{r.br||"—"}</td>
                 <td style={{padding:"8px 10px",borderBottom:`1px solid ${t.divider}`,color:t.primary,fontWeight:600,fontSize:11}}>{r.sl||"—"}</td>
                 <td style={{padding:"8px 10px",textAlign:"right",borderBottom:`1px solid ${t.divider}`}}>
-                  <span style={{background:sevColor+"22",color:sevColor,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:700}}>{r.pctGp}%</span>
+                  <span style={{background:sevColor+"22",color:sevColor,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:700}}>
+                    {isLoss?"⛔ LOSS":r.pctGp+"%"}
+                  </span>
                 </td>
                 <td style={{padding:"8px 10px",textAlign:"right",borderBottom:`1px solid ${t.divider}`,fontWeight:700,color:t.text,fontSize:12}}>{$(r.ga)}</td>
                 <td style={{padding:"8px 10px",textAlign:"right",borderBottom:`1px solid ${t.divider}`,fontWeight:700,color:t.red,fontSize:12}}>-{$(r.gpGap)}</td>
@@ -1129,22 +1132,30 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
   const[bkSortDir,setBkSortDir]=useState(-1);
   function handleBkSort(col){if(bkSortCol===col)setBkSortDir(d=>-d);else{setBkSortCol(col);setBkSortDir(-1);}}
 
-  const metrics=[{k:"gp",l:"Gross Profit"},{k:"rv",l:"Revenue"},{k:"ad",l:"Ads Spend"},{k:"un",l:"Units"}];
-  const mK={gp:{a:"gpa",p:"gpp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"}};
+  const metrics=[
+    {k:"gp",l:"Gross Profit"},{k:"rv",l:"Revenue"},{k:"ad",l:"Ads Spend"},{k:"un",l:"Units"},
+    {k:"se",l:"Sessions"},{k:"im",l:"Impressions"},{k:"cr",l:"Conv. Rate"},{k:"ct",l:"Click-Through Rate"},
+  ];
+  const mK={gp:{a:"gpa",p:"gpp"},rv:{a:"ra",p:"rp"},ad:{a:"aa",p:"ap"},un:{a:"ua",p:"up"},se:{a:"sa",p:"sp"},im:{a:"ia",p:"ip"},cr:{a:"cra",p:"crp"},ct:{a:"cta",p:"ctp"}};
 
   const mpd=monthPlanData||[];
   const hasData=mpd.some(m=>(m.gpa||0)+(m.gpp||0)+(m.ra||0)+(m.rp||0)>0)||(asinPlanBkData||[]).length>0;
   const trendData=mpd.map(m=>{const ak=mK[trendMetric].a,pk2=mK[trendMetric].p;return{m:m.m,Actual:m[ak],Plan:m[pk2]}});
   const isCur=["gp","rv","ad"].includes(trendMetric);
+  const isPct=["cr","ct"].includes(trendMetric);
 
   const kpiData=useMemo(()=>{
-    const pk=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0}};
+    const pk=planKpi||{gp:{a:0,p:0},rv:{a:0,p:0},ad:{a:0,p:0},un:{a:0,p:0},se:{a:0,p:0},im:{a:0,p:0},cr:{a:0,p:0},ct:{a:0,p:0}};
     if(planMonth==="All")return pk;
     const mi=MS.indexOf(planMonth);const m=mpd[mi];if(!m)return pk;
-    return{gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up}};
+    return{
+      gp:{a:m.gpa,p:m.gpp},rv:{a:m.ra,p:m.rp},ad:{a:m.aa,p:m.ap},un:{a:m.ua,p:m.up},
+      se:{a:m.sa,p:m.sp},im:{a:m.ia,p:m.ip},
+      cr:{a:(m.cra||0)/100,p:(m.crp||0)/100},ct:{a:(m.cta||0)/100,p:(m.ctp||0)/100},
+    };
   },[planMonth,planKpi,mpd]);
 
-  // Computed KPIs: ROAS + Margin
+  // Computed KPIs: ROAS + Margin (từ GP/Revenue/Ads)
   const kpiRoas={a:kpiData.ad.a>0?kpiData.rv.a/kpiData.ad.a:null,p:kpiData.ad.p>0?kpiData.rv.p/kpiData.ad.p:null};
   const kpiMargin={a:kpiData.rv.a>0?kpiData.gp.a/kpiData.rv.a*100:null,p:kpiData.rv.p>0?kpiData.gp.p/kpiData.rv.p*100:null};
 
@@ -1271,8 +1282,8 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
       </div>;
     })()}
 
-    {/* ── KPI Cards — 6 cards ── */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8,marginBottom:14}}>
+    {/* ── KPI Cards — Row 1: Financial (6 cards) ── */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:8}}>
       <PlanKpi title="⭐ Gross Profit" actual={kpiData.gp.a} plan={kpiData.gp.p} t={t} highlight tip={TIPS.gp}/>
       <PlanKpi title="💰 Revenue"      actual={kpiData.rv.a} plan={kpiData.rv.p} t={t} tip={TIPS.revenue}/>
       <PlanKpi title="📢 Ads Spend"    actual={kpiData.ad.a} plan={kpiData.ad.p} t={t} tip={TIPS.advCost}/>
@@ -1280,10 +1291,17 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
       <PlanKpi title="🎯 ROAS ✦"       actual={kpiRoas.a}    plan={kpiRoas.p}    t={t} fmt={v=>v!=null?v.toFixed(2)+"x":"—"}/>
       <PlanKpi title="📊 Margin ✦"     actual={kpiMargin.a}  plan={kpiMargin.p}  t={t} fmt={v=>v!=null?v.toFixed(1)+"%":"—"}/>
     </div>
+    {/* ── KPI Cards — Row 2: Traffic (4 cards) ── */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:14}}>
+      <PlanKpi title="👁 Sessions"     actual={kpiData.se.a} plan={kpiData.se.p} t={t} fmt={N} tip={TIPS.sessions}/>
+      <PlanKpi title="📣 Impressions"  actual={kpiData.im.a} plan={kpiData.im.p} t={t} fmt={N}/>
+      <PlanKpi title="🎯 Conv. Rate"   actual={kpiData.cr.a!=null?Math.round(kpiData.cr.a*10000)/100:null} plan={Math.round((kpiData.cr.p||0)*10000)/100} t={t} fmt={v=>v!=null?Math.round(v*100)/100+"%":"—"} tip={TIPS.cr}/>
+      <PlanKpi title="🖱 CTR"          actual={kpiData.ct.a!=null?Math.round(kpiData.ct.a*10000)/100:null} plan={Math.round((kpiData.ct.p||0)*10000)/100} t={t} fmt={v=>v!=null?Math.round(v*100)/100+"%":"—"} tip={TIPS.ctr}/>
+    </div>
 
     {/* ── Trend chart ── */}
     <Sec title="📈 Trend — Actual vs Plan" icon="" t={t} action={<select value={trendMetric} onChange={e=>setTrendMetric(e.target.value)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:t.primary,cursor:"pointer"}}>{metrics.map(m=><option key={m.k} value={m.k}>{m.l}</option>)}</select>}>
-      <Cd t={t}><ResponsiveContainer width="100%" height={220}><ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="m" tick={{fill:t.textSec,fontSize:11}}/><YAxis tick={{fill:t.textSec,fontSize:11}} tickFormatter={v=>isCur?$s(v):N(v)}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Actual" fill={t.primary} radius={[4,4,0,0]}/><Line type="monotone" dataKey="Plan" stroke={t.orange} strokeWidth={2} strokeDasharray="5 3" dot={{r:3,fill:t.orange}}/>{planMonth!=="All"&&<ReferenceLine x={planMonth} stroke={t.green} strokeWidth={2} strokeDasharray="4 2" label={{value:"▼",position:"top",fill:t.green,fontSize:11}}/>}</ComposedChart></ResponsiveContainer></Cd>
+      <Cd t={t}><ResponsiveContainer width="100%" height={220}><ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid}/><XAxis dataKey="m" tick={{fill:t.textSec,fontSize:11}}/><YAxis tick={{fill:t.textSec,fontSize:11}} tickFormatter={v=>isCur?$s(v):isPct?v+"%":N(v)}/><Tooltip content={<CT t={t}/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Actual" fill={t.primary} radius={[4,4,0,0]}/><Line type="monotone" dataKey="Plan" stroke={t.orange} strokeWidth={2} strokeDasharray="5 3" dot={{r:3,fill:t.orange}}/>{planMonth!=="All"&&<ReferenceLine x={planMonth} stroke={t.green} strokeWidth={2} strokeDasharray="4 2" label={{value:"▼",position:"top",fill:t.green,fontSize:11}}/>}</ComposedChart></ResponsiveContainer></Cd>
     </Sec>
 
     {/* ── Tabs ── */}
@@ -1348,7 +1366,11 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
                 <td style={{padding:"9px 10px",borderBottom:"1px solid "+t.divider,fontWeight:600,fontSize:11}}>{r.br||"—"}</td>
                 <td style={{padding:"9px 10px",borderBottom:"1px solid "+t.divider,color:t.primary,fontWeight:600,fontSize:11}}>{r.sl||"—"}</td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}>
-                  {r._pctGp!=null?<span style={{background:pc+"22",color:pc,padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:700}}>{r._pctGp}%</span>:<span style={{color:t.textMuted}}>—</span>}
+                  {r._pctGp!=null
+                    ?<span style={{background:pc+"22",color:pc,padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:700}}>
+                        {r.ga<0?"⛔ LOSS":r._pctGp+"%"}
+                      </span>
+                    :<span style={{color:t.textMuted}}>—</span>}
                 </td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.ga} plan={r._gpPlanYtd??r.gp} t={t}/></td>
                 <td style={{padding:"9px 10px",textAlign:"right",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra} plan={r.rp} t={t}/></td>
@@ -1373,8 +1395,8 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
           <thead><tr>
-            {[["Tháng","left",false],["⭐ GP",null,true],["Revenue"],["Ads"],["Units"],["ROAS ✦"],["Margin ✦"]].map(([h,a,gp],i)=>(
-              <th key={i} style={{padding:"10px 14px",textAlign:a||"right",fontSize:9.5,fontWeight:700,color:gp?t.primary:t.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${t.divider}`,background:gp?t.primaryLight:t.tableBg,whiteSpace:"nowrap",position:"sticky",top:0,zIndex:2}}>{h}</th>
+            {[["Tháng","left",false],["⭐ GP",null,true],["Revenue"],["Ads"],["Units"],["ROAS ✦"],["Margin ✦"],["Sessions"],["Impressions"],["CR %"],["CTR %"]].map(([h,a,gp],i)=>(
+              <th key={i} style={{padding:"10px 12px",textAlign:a||"right",fontSize:9.5,fontWeight:700,color:gp?t.primary:t.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${t.divider}`,background:gp?t.primaryLight:t.tableBg,whiteSpace:"nowrap",position:"sticky",top:0,zIndex:2}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>{mpd.map((r,i)=>{
@@ -1385,16 +1407,20 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
             return<tr key={i} style={{opacity:has?1:.5,background:sel?t.primaryLight:"transparent"}}
               onMouseEnter={e=>e.currentTarget.style.background=sel?t.primaryLight:t.tableHover}
               onMouseLeave={e=>e.currentTarget.style.background=sel?t.primaryLight:"transparent"}>
-              <td style={{padding:"10px 14px",fontWeight:sel?800:700,borderBottom:"1px solid "+t.divider,color:sel?t.primary:t.text}}>
+              <td style={{padding:"10px 12px",fontWeight:sel?800:700,borderBottom:"1px solid "+t.divider,color:sel?t.primary:t.text}}>
                 {r.m}{!has&&<span style={{fontSize:8,color:t.textMuted,marginLeft:5}}>(planned)</span>}
                 {sel&&<span style={{marginLeft:6,fontSize:9,color:t.primary}}>◀</span>}
               </td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra}  plan={r.rp}  t={t}/></td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa}  plan={r.ap}  t={t} reverse/></td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua}  plan={r.up}  t={t} isMoney={false}/></td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider}}><APG actual={roas}  plan={pr}    t={t} isMoney={false} suffix="x"/></td>
-              <td style={{padding:"10px 14px",borderBottom:"1px solid "+t.divider}}><APG actual={margin} plan={pm}   t={t} isMoney={false} suffix="%"/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider,background:t.primaryGhost}}><APG actual={r.gpa} plan={r.gpp} t={t}/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.ra}   plan={r.rp}  t={t}/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.aa}   plan={r.ap}  t={t} reverse/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.ua}   plan={r.up}  t={t} isMoney={false}/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={roas}   plan={pr}    t={t} isMoney={false} suffix="x"/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={margin} plan={pm}    t={t} isMoney={false} suffix="%"/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.sa}   plan={r.sp}  t={t} isMoney={false}/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.ia}   plan={r.ip}  t={t} isMoney={false}/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.cra}  plan={r.crp} t={t} isMoney={false} suffix="%"/></td>
+              <td style={{padding:"10px 12px",borderBottom:"1px solid "+t.divider}}><APG actual={r.cta}  plan={r.ctp} t={t} isMoney={false} suffix="%"/></td>
             </tr>;
           })}</tbody>
         </table>
