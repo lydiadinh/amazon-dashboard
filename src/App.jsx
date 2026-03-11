@@ -997,19 +997,9 @@ function PlanAlertsTab({alerts,t,onAsinClick}){
   const btnStyle=(dis)=>({padding:"4px 9px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:dis?t.tableBg:t.card,color:dis?t.textMuted:t.textSec,fontSize:11,cursor:dis?"default":"pointer"});
 
   return<div>
-    {/* Summary strip — inline stat bar, not card buttons */}
-    <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:12,background:t.tableBg,border:`1px solid ${t.divider}`,borderRadius:8,padding:"8px 16px",flexWrap:"wrap",rowGap:6}}>
-      {[{label:"Total",val:alerts.length,color:t.textSec},{label:"Critical",val:critical.length,color:t.red},{label:"Warning",val:warning.length,color:t.orange},{label:"Showing",val:filtered.length,color:t.primary}].map((s,i)=>(
-        <React.Fragment key={i}>
-          {i>0&&<span style={{width:1,height:16,background:t.divider,margin:"0 14px",flexShrink:0}}/>}
-          <span style={{fontSize:11,color:t.textMuted,marginRight:5}}>{s.label}</span>
-          <span style={{fontSize:13,fontWeight:800,color:s.color}}>{s.val}</span>
-        </React.Fragment>
-      ))}
-    </div>
-
-    {/* Filter bar */}
+    {/* Combined filter + stats bar */}
     <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+      {/* Severity toggle */}
       <div style={{display:"flex",gap:3,background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:3}}>
         {["All","Critical","Warning"].map(s=>(
           <button key={s} onClick={()=>{setSevF(s);setPage(1);}} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:10.5,fontWeight:700,cursor:"pointer",
@@ -1026,10 +1016,20 @@ function PlanAlertsTab({alerts,t,onAsinClick}){
         {brandOpts.map(o=><option key={o} value={o} style={{background:t.card}}>{o==="All"?"All Brands":o}</option>)}
       </select>
       <input value={search} onChange={e=>wrap(setSearch)(e.target.value)} placeholder="Search ASIN / Brand / Seller..."
-        style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:"6px 12px",color:t.text,fontSize:11,outline:"none",width:220}}/>
+        style={{flex:1,minWidth:160,background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:"6px 12px",color:t.text,fontSize:11,outline:"none"}}/>
+      {/* Inline stats — right-aligned, clearly read-only */}
+      <div style={{display:"flex",alignItems:"center",gap:0,marginLeft:"auto",flexShrink:0}}>
+        {[{label:"Total",val:alerts.length,color:t.textSec},{label:"Critical",val:critical.length,color:t.red},{label:"Warning",val:warning.length,color:t.orange},{label:"Showing",val:filtered.length,color:t.primary}].map((s,i)=>(
+          <React.Fragment key={i}>
+            {i>0&&<span style={{width:1,height:14,background:t.divider,margin:"0 10px",flexShrink:0,display:"inline-block"}}/>}
+            <span style={{fontSize:10,color:t.textMuted}}>{s.label} </span>
+            <span style={{fontSize:12,fontWeight:800,color:s.color,marginLeft:3}}>{s.val}</span>
+          </React.Fragment>
+        ))}
+      </div>
       {hasFilter&&<button onClick={()=>{setSevF("All");setSellerF("All");setBrandF("All");setSearch("");setPage(1);}}
-        style={{background:t.redBg,border:`1px solid ${t.red}44`,color:t.red,fontSize:10,fontWeight:600,padding:"6px 12px",borderRadius:8,cursor:"pointer",whiteSpace:"nowrap"}}>
-        ✕ Clear filters
+        style={{background:t.redBg,border:`1px solid ${t.red}44`,color:t.red,fontSize:10,fontWeight:600,padding:"6px 10px",borderRadius:8,cursor:"pointer",whiteSpace:"nowrap"}}>
+        ✕ Clear
       </button>}
     </div>
 
@@ -1333,26 +1333,26 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
 
     {/* ── Tab: ASIN Breakdown ── */}
     {activeTab==="breakdown"&&<div style={{background:t.card,border:"1px solid "+t.cardBorder,borderRadius:12,overflow:"hidden"}}>
-      {/* Search + clear bar */}
+      {/* Filter bar: search + brand */}
       <div style={{padding:"9px 14px",borderBottom:"1px solid "+t.divider,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <input value={bkSearch} onChange={e=>setBkSearch(e.target.value)} placeholder="Search ASIN / Brand / Seller..."
-          style={{flex:1,minWidth:180,background:t.tableBg,border:"1px solid "+t.cardBorder,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:12,outline:"none"}}/>
+          style={{flex:1,minWidth:180,background:t.tableBg,border:"1px solid "+t.cardBorder,borderRadius:8,padding:"6px 12px",color:t.text,fontSize:12,outline:"none"}}/>
+        <select value={colBrand} onChange={e=>setColBrand(e.target.value)}
+          style={{background:colBrand!=="All"?t.primaryLight:t.tableBg,border:`1px solid ${colBrand!=="All"?t.primary+"55":t.cardBorder}`,borderRadius:8,padding:"6px 10px",fontSize:11,color:colBrand!=="All"?t.primary:t.textSec,fontWeight:600,cursor:"pointer",outline:"none"}}>
+          {brandOpts.map(o=><option key={o} value={o} style={{background:t.card}}>{o==="All"?"All Brands":o}</option>)}
+        </select>
         <span style={{fontSize:10,color:t.textMuted,whiteSpace:"nowrap"}}>{bkRows.length} ASINs</span>
-        {hasColFilter&&<button onClick={()=>{setColBrand("All");setColSeller("All");}} style={{background:t.redBg,border:"1px solid "+t.red+"44",color:t.red,fontSize:10,fontWeight:600,padding:"4px 10px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap"}}>✕ Clear col. filters</button>}
+        {hasColFilter&&<button onClick={()=>{setColBrand("All");setColSeller("All");}} style={{background:t.redBg,border:"1px solid "+t.red+"44",color:t.red,fontSize:10,fontWeight:600,padding:"4px 10px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap"}}>✕ Clear</button>}
       </div>
       <div style={{overflowX:"auto",maxHeight:460,overflowY:"auto"}}>
         <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:12}}>
           <thead>
             <tr>
-              <PlanSortTh label="ASIN"    col="a"       sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={130} t={t}/>
-              <PlanSortTh label="Brand"   col="br"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={110} t={t}>
-                <PlanColFilter value={colBrand} onChange={v=>{setColBrand(v);}} options={brandOpts} ph="All" t={t}/>
-              </PlanSortTh>
-              <PlanSortTh label={<>Seller <span style={{color:t.green,fontSize:7}}>●NEW</span></>} col="sl" sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={100} t={t}>
-                <PlanColFilter value={colSeller} onChange={v=>{setColSeller(v);}} options={sellerOpts} ph="All" t={t}/>
-              </PlanSortTh>
+              <PlanSortTh label="ASIN"     col="a"       sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={130} t={t}/>
+              <PlanSortTh label="Brand"    col="br"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={110} t={t}/>
+              <PlanSortTh label="Seller"   col="sl"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} align="left" minW={100} t={t}/>
               <PlanSortTh label="% Plan"   col="pctGp"   sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={72}  t={t}/>
-              <PlanSortTh label="GP"    col="ga"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={95}  t={t}/>
+              <PlanSortTh label="GP"       col="ga"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={95}  t={t}/>
               <PlanSortTh label="Revenue"  col="ra"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={95}  t={t}/>
               <PlanSortTh label="Ads"      col="aa"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={90}  t={t}/>
               <PlanSortTh label="Units"    col="ua"      sortCol={bkSortCol} sortDir={bkSortDir} onSort={handleBkSort} minW={75}  t={t}/>
