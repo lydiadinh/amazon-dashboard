@@ -535,20 +535,12 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,prevEm,prevPeriod,pctChg,mob,on
       const brushEnd=Math.max(0,total-1);
       const xInterval=Math.max(0,Math.floor(total/10));
       return<Cd t={t} style={{marginBottom:16}}>
-        {/* Row 1: title + preset range buttons */}
+        {/* Row 1: title + slicer */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,flexWrap:'wrap',gap:6}}>
           <div style={{fontSize:13,fontWeight:700,color:t.text}}>Daily Trend</div>
-          <div style={{display:'flex',gap:4,alignItems:'center'}}>
-            <span style={{fontSize:10,color:t.textMuted,marginRight:2}}>Zoom:</span>
-            {[{l:'7D',v:7},{l:'14D',v:14},{l:'30D',v:30},{l:'All',v:0}].map(r=>{
-              const active=trendZoom===r.v;
-              return<button key={r.v} onClick={()=>setTrendZoom(r.v)} style={{padding:'3px 9px',borderRadius:6,border:'1px solid '+(active?t.primary:t.inputBorder),background:active?t.primary:'transparent',color:active?'#fff':t.textMuted,fontSize:10,fontWeight:active?700:500,cursor:'pointer',transition:'all .12s'}}>{r.l}</button>;
-            })}
-            <div style={{width:1,background:t.divider,height:16,alignSelf:'center'}}/>
-            <button onClick={()=>setShowBrush(v=>!v)} title={showBrush?'Hide slicer':'Show slicer'} style={{padding:'3px 9px',borderRadius:6,border:'1px solid '+(showBrush?t.primary:t.inputBorder),background:showBrush?t.primaryGhost:'transparent',color:showBrush?t.primary:t.textMuted,fontSize:10,fontWeight:showBrush?700:500,cursor:'pointer',display:'flex',alignItems:'center',gap:4,transition:'all .12s'}}>
-              <span style={{fontSize:11}}>⇔</span> Slicer
-            </button>
-          </div>
+          <button onClick={()=>setShowBrush(v=>!v)} title={showBrush?'Hide slicer':'Show slicer'} style={{padding:'4px 12px',borderRadius:6,border:'1px solid '+(showBrush?t.primary:t.inputBorder),background:showBrush?t.primaryGhost:'transparent',color:showBrush?t.primary:t.textMuted,fontSize:10,fontWeight:showBrush?700:500,cursor:'pointer',display:'flex',alignItems:'center',gap:4,transition:'all .12s'}}>
+            <span style={{fontSize:11}}>⇔</span> Slicer
+          </button>
         </div>
         {/* Row 2: series toggles */}
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
