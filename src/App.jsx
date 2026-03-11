@@ -440,7 +440,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   const[showBrush,setShowBrush]=useState(false);
   const dailyChartData=fDaily.map(d=>({
     ...d,
-    advCost:d.advCost||0,
+    advCost:Math.abs(d.advCost||0),
     crPct:d.sessions>0?(d.units/d.sessions*100):0,
     tacos:d.revenue>0?(Math.abs(d.advCost||0)/d.revenue*100):0,
   }));
@@ -513,11 +513,11 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   },[fAsin,fShop,t]);
 
   /* ═══ ZONE A — TILE DRAWER STATE ═══ */
-  const[openTiles,setOpenTiles]=useState(new Set());
+  const[openTile,setOpenTile]=useState(null); // id of currently open tile
   const[tileExpandedRows,setTileExpandedRows]=useState({});
-  const toggleTile=id=>setOpenTiles(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s});
+  const toggleTile=id=>setOpenTile(prev=>prev===id?null:id);
   const toggleTileRow=(tileId,rowId)=>setTileExpandedRows(prev=>{
-    const key=tileId+'_'+rowId;const s=new Set(prev[tileId]||[]);
+    const s=new Set(prev[tileId]||[]);
     s.has(rowId)?s.delete(rowId):s.add(rowId);
     return{...prev,[tileId]:s};
   });
@@ -555,7 +555,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   /* ═══ RENDER ═══ */
   const S=t.textSec;const BD=t.cardBorder;const DIV=t.divider;
   const selStyle={background:t.card,color:t.text,border:'1px solid '+t.inputBorder,borderRadius:8,padding:'6px 22px 6px 9px',fontSize:12,fontWeight:500,cursor:'pointer',outline:'none',appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238892aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C%2Fsvg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 7px center'};
-  const inputStyle={border:'1px solid '+t.inputBorder,borderRadius:8,padding:'6px 9px',fontSize:12,fontWeight:500,fontFamily:"'DM Mono',monospace",color:t.text,background:t.card,outline:'none',width:96};
+  const inputStyle={border:'1px solid '+t.inputBorder,borderRadius:8,padding:'6px 9px',fontSize:12,fontWeight:500,color:t.text,background:t.card,outline:'none'};
 
   return<div>
 
@@ -594,80 +594,99 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
         </div>
       </div>
 
-      {/* Tiles row */}
-      <div style={{display:'flex',overflowX:'auto'}}>
+      {/* Tiles row — fixed layout, More button stays pinned at bottom of each tile */}
+      <div style={{display:'flex',overflowX:'auto',alignItems:'stretch'}}>
         {zoneALoading&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>Loading...</div>}
         {!zoneALoading&&zoneATileData.map((tile,ti)=>{
-          const tileOpen=openTiles.has(tile.id);
-          const tileDR=buildDetailRows(tile.em, tile.detail||{});
-          const tileExpRows=tileExpandedRows[tile.id]||new Set();
+          const isOpen=openTile===tile.id;
           const tileColor=TILE_COLORS[ti%TILE_COLORS.length];
           const tileNP=tile.em?.netProfit||0;
           const tileSales=tile.em?.sales||0;
           const tileChg=tile.prevSales!=null&&tile.prevSales!==0?((tileSales-tile.prevSales)/Math.abs(tile.prevSales)*100):null;
+          const numSt={fontSize:14,fontWeight:700,color:t.text};
+          const numSmSt={fontSize:12,fontWeight:700,color:t.text};
           return<div key={tile.id} style={{flex:1,minWidth:190,borderRight:ti<zoneATileData.length-1?'1px solid '+DIV:'none',display:'flex',flexDirection:'column'}}>
             {/* Color bar */}
-            <div style={{height:4,background:tileColor}}/>
-            {/* Tile body */}
-            <div style={{padding:'14px 16px 10px',flex:1}}>
-              <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:2}}>{tile.label}</div>
-              <div style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginBottom:12}}>{tile.dateLabel}</div>
+            <div style={{height:4,background:tileColor,flexShrink:0}}/>
+            {/* Tile body — fills available space */}
+            <div style={{padding:'14px 16px 10px',flex:1,display:'flex',flexDirection:'column'}}>
+              <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:1}}>{tile.label}</div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:12,lineHeight:1.4}}>{tile.dateLabel}</div>
               {/* Sales */}
               <div style={{paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.6,marginBottom:2}}>Sales</div>
-                <div style={{fontSize:15,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{$2(tileSales)}</div>
+                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.6,marginBottom:3}}>Sales</div>
+                <div style={numSt}>{$2(tileSales)}</div>
                 {tileChg!=null&&<span style={{fontSize:10,fontWeight:600,color:tileChg>=0?t.green:t.red}}>{tileChg>=0?'↑':'↓'}{Math.abs(tileChg).toFixed(1)}%</span>}
               </div>
               {/* Orders/Units + Refunds */}
-              <div style={{display:'flex',gap:14,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5,marginBottom:2}}>Orders / Units</div><div style={{fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{N(tile.em?.orders||0)} / {N(tile.em?.units||0)}</div></div>
-                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5,marginBottom:2}}>Refunds</div><div style={{fontSize:12,fontWeight:700,color:(tile.em?.refunds||0)>5?t.orange:t.text,fontFamily:"'DM Mono',monospace"}}>{N(tile.em?.refunds||0)}</div></div>
+              <div style={{display:'flex',gap:12,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
+                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Orders / Units</div><div style={numSmSt}>{N(tile.em?.orders||0)} / {N(tile.em?.units||0)}</div></div>
+                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Refunds</div><div style={{...numSmSt,color:(tile.em?.refunds||0)>5?t.orange:t.text}}>{N(tile.em?.refunds||0)}</div></div>
               </div>
               {/* Adv. cost + Est. payout */}
-              <div style={{display:'flex',gap:14,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5,marginBottom:2}}>Adv. cost</div><div style={{fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{$2(Math.abs(tile.em?.advCost||0))}</div></div>
-                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5,marginBottom:2}}>Est. payout</div><div style={{fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{$2(tile.em?.estPayout||0)}</div></div>
+              <div style={{display:'flex',gap:12,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
+                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Adv. cost</div><div style={numSmSt}>{$2(Math.abs(tile.em?.advCost||0))}</div></div>
+                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Est. payout</div><div style={numSmSt}>{$2(tile.em?.estPayout||0)}</div></div>
               </div>
               {/* Net profit */}
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.5,marginBottom:2}}>Net profit</div>
-                <div style={{fontSize:14,fontWeight:700,color:tileNP>=0?t.green:t.red,fontFamily:"'DM Mono',monospace"}}>{$2(tileNP)}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Net profit</div>
+                <div style={{fontSize:14,fontWeight:700,color:tileNP>=0?t.green:t.red}}>{$2(tileNP)}</div>
                 <div style={{fontSize:10,fontWeight:600,color:tileNP>=0?t.green:t.red}}>{tile.em?.margin!=null?((tile.em.margin||0).toFixed(1)+'%'):'—'} margin</div>
               </div>
             </div>
-            {/* More button */}
-            <button onClick={()=>toggleTile(tile.id)} style={{width:'100%',padding:'8px 0 6px',background:'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:600,color:t.primary,cursor:'pointer',fontFamily:'inherit'}}>
-              {tileOpen?'Less ▴':'More ▾'}
+            {/* More button — always pinned at bottom, never shifts other tiles */}
+            <button onClick={()=>toggleTile(tile.id)} style={{width:'100%',padding:'8px 0 7px',background:isOpen?t.primaryGhost:'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:700,color:isOpen?t.primary:t.textSec,cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s'}}>
+              {isOpen?'Less ▴':'More ▾'}
             </button>
-            {/* Tile detail drawer */}
-            {tileOpen&&<div style={{background:t.tableBg,borderTop:'1px solid '+DIV}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                <tbody>{tileDR.map((row,ri)=>{
-                  const hasSub=row.sub&&row.sub.length>0;
-                  const isExp=tileExpRows.has(row.id);
-                  const isNpLike=(row.id==='np'||row.id==='grossProfit');
-                  const valCol=isNpLike?(row.val>=0?t.green:t.red):t.text;
-                  return<React.Fragment key={ri}>
-                    <tr onClick={()=>hasSub&&toggleTileRow(tile.id,row.id)} style={{cursor:hasSub?'pointer':'default',borderBottom:'1px solid '+DIV}}
-                      onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <td style={{padding:'7px 12px',color:S,fontSize:11,fontWeight:500,whiteSpace:'nowrap'}}>
-                        {hasSub&&<span style={{fontSize:9,color:t.primary,marginRight:4}}>{isExp?'▼':'▶'}</span>}
-                        {row.label}
-                      </td>
-                      <td style={{padding:'7px 12px',textAlign:'right',fontWeight:700,color:valCol,fontFamily:"'DM Mono',monospace",fontSize:11}}>{row.fmt(row.val)}</td>
-                    </tr>
-                    {isExp&&row.sub.map((s,si)=><tr key={'s'+si} style={{background:t.primaryGhost+'88',borderBottom:'1px solid '+DIV}}>
-                      <td style={{padding:'6px 12px 6px 26px',fontSize:10.5,color:t.textMuted}}>{s.l}</td>
-                      <td style={{padding:'6px 12px',textAlign:'right',fontSize:10.5,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace"}}>{s.fmt(s.v)}</td>
-                    </tr>)}
-                  </React.Fragment>;
-                })}</tbody>
-              </table>
-            </div>}
           </div>;
         })}
-        {!zoneALoading&&zoneATileData.length===0&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select preset above and ensure DB is connected.</div>}
+        {!zoneALoading&&zoneATileData.length===0&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select a preset above and ensure DB is connected.</div>}
       </div>
+
+      {/* Detail panel — renders BELOW all tiles, full width, no layout shift */}
+      {openTile&&(()=>{
+        const tile=zoneATileData.find(t=>t.id===openTile);
+        if(!tile)return null;
+        const tileDR=buildDetailRows(tile.em, tile.detail||{});
+        const tileExpRows=tileExpandedRows[openTile]||new Set();
+        const tileIdx=zoneATileData.findIndex(t=>t.id===openTile);
+        const tileColor=TILE_COLORS[tileIdx%TILE_COLORS.length];
+        return<div style={{borderTop:'2px solid '+tileColor,background:t.tableBg}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 18px 8px',borderBottom:'1px solid '+DIV}}>
+            <div style={{width:10,height:10,borderRadius:3,background:tileColor,flexShrink:0}}/>
+            <span style={{fontSize:12,fontWeight:700,color:t.text}}>{tile.label}</span>
+            <span style={{fontSize:10,color:t.textMuted}}>{tile.dateLabel}</span>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr style={{borderBottom:'2px solid '+DIV}}>
+              <th style={{padding:'8px 18px',textAlign:'left',fontSize:10,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:.8,background:t.tableBg}}>Metric</th>
+              <th style={{padding:'8px 18px',textAlign:'right',fontSize:10,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:.8,background:t.tableBg}}>Value</th>
+            </tr></thead>
+            <tbody>{tileDR.map((row,ri)=>{
+              const hasSub=row.sub&&row.sub.length>0;
+              const isExp=tileExpRows.has(row.id);
+              const isNpLike=(row.id==='np'||row.id==='grossProfit');
+              const valCol=isNpLike?(row.val>=0?t.green:t.red):t.text;
+              return<React.Fragment key={ri}>
+                <tr onClick={()=>hasSub&&toggleTileRow(openTile,row.id)} style={{cursor:hasSub?'pointer':'default',borderBottom:'1px solid '+DIV}}
+                  onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={{padding:'9px 18px',color:S,fontSize:12,fontWeight:500,whiteSpace:'nowrap'}}>
+                    {hasSub&&<span style={{fontSize:9,color:t.primary,marginRight:5}}>{isExp?'▼':'▶'}</span>}
+                    {row.label}
+                  </td>
+                  <td style={{padding:'9px 18px',textAlign:'right',fontWeight:700,color:valCol,fontSize:13}}>{row.fmt(row.val)}</td>
+                </tr>
+                {isExp&&row.sub.map((s,si)=><tr key={'s'+si} style={{background:t.primaryGhost+'88',borderBottom:'1px solid '+DIV}}>
+                  <td style={{padding:'7px 18px 7px 38px',fontSize:11,color:t.textMuted}}>{s.l}</td>
+                  <td style={{padding:'7px 18px',textAlign:'right',fontSize:12,fontWeight:600,color:t.text}}>{s.fmt(s.v)}</td>
+                </tr>)}
+              </React.Fragment>;
+            })}</tbody>
+          </table>
+        </div>;
+      })()}
+
     </div>
 
     {/* ══════════════════════════════════════════════════
@@ -683,11 +702,11 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
           <span style={{fontSize:10,fontWeight:700,color:t.primary,textTransform:'uppercase',letterSpacing:.6}}>Start:</span>
-          <input type="date" value={sd} onChange={e=>{setSd(e.target.value)}} style={inputStyle}/>
+          <input type="date" value={sd} onChange={e=>setSd(e.target.value)} style={{...inputStyle,width:130}}/>
           <span style={{fontSize:10,fontWeight:700,color:t.primary,textTransform:'uppercase',letterSpacing:.6}}>End:</span>
-          <input type="date" value={ed} onChange={e=>{setEd(e.target.value)}} style={inputStyle}/>
+          <input type="date" value={ed} onChange={e=>setEd(e.target.value)} style={{...inputStyle,width:130}}/>
           <div style={{width:1,height:22,background:t.primary+'44',flexShrink:0}}/>
-          {/* Store multi-select (simple for now) */}
+          {/* Store dropdown */}
           <div ref={zoneBStoreRef} style={{position:'relative'}}>
             <button onClick={()=>setZoneBStoreOpen(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,background:t.card,border:'1.5px solid '+(store!=='All'?t.primary:t.inputBorder),borderRadius:9,padding:'6px 12px',fontSize:12,fontWeight:600,color:store!=='All'?t.primary:S,cursor:'pointer',whiteSpace:'nowrap'}}>
               {store==='All'?'All Shops':'Shop: '+store}
