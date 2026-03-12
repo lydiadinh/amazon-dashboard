@@ -2708,7 +2708,6 @@ export default function App(){
 
   // ═══ ZONE A STATE ═══
   const[zoneAPreset,setZoneAPreset]=useState('tod_7_14_30');
-  const[zoneARefDate,setZoneARefDate]=useState(null); // set after dbRange loads
   // zoneAStore is derived from selectedStores (shared with Zone B)
   const[zoneATileData,setZoneATileData]=useState([]);
   const[zoneALoading,setZoneALoading]=useState(false);
@@ -2763,10 +2762,10 @@ export default function App(){
           if(dr){
             setDbRange(dr);
             const _refDate=dr.today||dr.maxDate||dr.defaultEnd;
-            if(_refDate) setZoneARefDate(_refDate); // triggers Zone A fetch with correct date
             if(dr.defaultStart) setSd(dr.defaultStart);
             if(dr.defaultEnd)   setEd(dr.defaultEnd);
-            console.log("DB date range loaded: refDate=",_refDate,"min=",dr.minDate,"max=",dr.maxDate);
+// Zone A fetches itself via its own useEffect below
+            console.log("DB date range loaded: refDate=",_refDate);
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
           api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
@@ -2841,38 +2840,34 @@ export default function App(){
     return()=>{cancelled=true};
   },[fetchTrigger]);
 
-  // ═══════════ ZONE A FETCH — triggered by zoneARefDate (set after dbRange loads) ═══════════
-  // Zone A: use trigger counter like Zone B — avoids React closure/timing issues
-  const[zoneATrigger,setZoneATrigger]=useState(0);
-  const zoneAFetchRef=useRef({preset:zoneAPreset,store:storeStr,refDate:null});
-  zoneAFetchRef.current={preset:zoneAPreset,store:storeStr,refDate:zoneARefDate};
-  // Re-trigger when preset or store changes (after initial load)
+  // ═══════════ ZONE A FETCH — self-contained, fetches its own refDate ═══════════
+  // ═══════════ ZONE A FETCH — self-contained, fetches its own refDate ═══════════
   useEffect(()=>{
-    if(!live||!zoneARefDate)return;
-    setZoneATrigger(n=>n+1);
-  },[zoneAPreset,storeStr,live,zoneARefDate]);
-  // Actual fetch — reads from ref so always has latest values
-  useEffect(()=>{
-    if(zoneATrigger===0)return;
-    const{preset,store:_store,refDate}=zoneAFetchRef.current;
-    if(!refDate)return;
+    if(!live)return;
     let cancelled=false;
-    const periods=getZoneAPeriods(preset,refDate);
-    if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
-    const storeParam=_store==='All'?undefined:_store;
-    Promise.allSettled(periods.map(p=>
-      api('exec/summary',{start:p.start,end:p.end,store:storeParam})
-        .then(emRaw=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM,detail:null}))
-        .catch(()=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:EMPTY_EM,detail:null}))
-    )).then(results=>{
+    (async()=>{
+      // Get refDate directly — don't depend on App state timing
+      let refDate=null;
+      try{
+        const dr=await api('date-range');
+        refDate=dr?.today||dr?.maxDate||dr?.defaultEnd||null;
+      }catch(e){}
+      if(cancelled||!refDate)return;
+      const storeParam=storeStr==='All'?undefined:storeStr;
+      const periods=getZoneAPeriods(zoneAPreset,refDate);
+      const results=await Promise.allSettled(periods.map(p=>
+        api('exec/summary',{start:p.start,end:p.end,store:storeParam})
+          .then(emRaw=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM,detail:null}))
+          .catch(()=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:EMPTY_EM,detail:null}))
+      ));
       if(cancelled)return;
       setZoneATileData(results.map(r=>r.status==='fulfilled'?r.value:periods[0]));
       setZoneALoading(false);
-    });
+    })();
     return()=>{cancelled=true};
-  },[zoneATrigger]);
+  },[live,zoneAPreset,storeStr]);
 
   // ═══════════ FETCH PLAN DATA (debounced) ═══════════
   const [planTrigger,setPlanTrigger]=useState(0);
