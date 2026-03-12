@@ -1964,13 +1964,13 @@ const AI_FONT="'Plus Jakarta Sans',system-ui,-apple-system,sans-serif";
 // Load Plus Jakarta Sans font globally
 if(typeof document!=='undefined'&&!document.getElementById('pjs-font')){const l=document.createElement('link');l.id='pjs-font';l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';document.head.appendChild(l);const s=document.createElement('style');s.textContent=`*{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif!important}code,pre,.monospace,[style*="monospace"]{font-family:'JetBrains Mono','SF Mono','Cascadia Code',monospace!important}body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}`;document.head.appendChild(s);}
 const AI_HINTS={
-  exec:["So sánh Jan vs Feb","Shop nào cần cắt quảng cáo?","Rủi ro lớn nhất hiện tại?"],
-  inv:["Explain Sell-Through & Days of Supply","Nên xử lý hàng tồn >90 ngày như thế nào?","Phí storage có đáng lo không?"],
-  plan:["Mình có đang đúng target không?","ASIN nào lệch plan nhiều nhất?","Q2 cần điều chỉnh gì?"],
-  prod:["ASIN nào nên tắt ads?","Top ASINs có gì chung?","ACOS bao nhiêu là healthy?"],
-  shops:["Shop nào cần action gấp?","Revenue tập trung quá nhiều vào 1 shop?","Cải thiện shop lỗ bằng cách nào?"],
-  team:["Seller nào cần coaching?","So sánh hiệu suất top vs bottom","Nên phân lại ASIN thế nào?"],
-  daily:["Có anomaly gì hôm nay không?","Pattern ngày trong tuần","Trend 7 ngày gần nhất"],
+  exec:["Compare this month vs last month","Which shop should cut ad spend?","What are the biggest risks right now?"],
+  inv:["Explain Sell-Through & Days of Supply","How should I handle inventory over 90 days?","Is the storage fee a concern?"],
+  plan:["Are we on track with our targets?","Which ASIN is most off-plan?","What adjustments are needed for Q2?"],
+  prod:["Which ASINs should pause ads?","What do the top ASINs have in common?","What is a healthy ACOS benchmark?"],
+  shops:["Which shop needs immediate action?","Is revenue too concentrated in one shop?","How to improve underperforming shops?"],
+  team:["Which seller needs coaching?","Compare top vs bottom seller performance","How should ASINs be reassigned?"],
+  daily:["Any anomalies today?","What is the day-of-week pattern?","Summarize the last 7-day trend"],
 };
 const PG_LABEL={exec:"Executive Overview",inv:"Inventory",plan:"ASIN Plan",prod:"Product Performance",shops:"Shop Performance",team:"Team Performance",daily:"Daily Ops"};
 
