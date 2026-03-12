@@ -1204,105 +1204,54 @@ app.get('/api/exec/detail', async (req, res) => {
     const { start, end, store, seller, asin: af } = req.query;
     const { s, e } = defDates(start, end);
     const accId = await storeToAccIds(store);
-    const fp = pWhere(s, e, accId, seller, af);   // seller_board_product filter
-    // seller_board_sales uses sc alias
-    let sw = 'WHERE sc.date BETWEEN ? AND ?'; const sp = [s, e];
-    { const _ac=accIdClause('sc',accId); sw+=_ac.w; sp.push(..._ac.p); }
+    const fp = pWhere(s, e, accId, seller, af);
 
-    // ── Q1: ADS BREAKDOWN (SP / SB / SBV / SD) ──
-    // DAX: seller_board_product[sponsoredProducts/Brands/BrandsVideo/Display]
-    // Values stored as negative in DB → ABS()
-    let sp_=0, sb=0, sbv=0, sd=0;
-    try {
-      const r = await q(`SELECT
-        ABS(SUM(COALESCE(p.sponsoredProducts,0)))    as sp,
-        ABS(SUM(COALESCE(p.sponsoredBrands,0)))      as sb,
-        ABS(SUM(COALESCE(p.sponsoredBrandsVideo,0))) as sbv,
-        ABS(SUM(COALESCE(p.sponsoredDisplay,0)))     as sd
-        FROM seller_board_product p
-        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci = a.asin
-        ${fp.w}`, fp.p, 45000);
-      sp_=parseFloat(r[0]?.sp)||0; sb=parseFloat(r[0]?.sb)||0;
-      sbv=parseFloat(r[0]?.sbv)||0; sd=parseFloat(r[0]?.sd)||0;
-    } catch(e1) { console.warn('exec/detail ads:', e1.message); }
-
-    // ── Q2: UNITS BREAKDOWN (Organic / PPC) ──
-    // DAX: seller_board_product[unitsOrganic] + seller_board_product[unitsPPC]
-    // NOTE: NO unitsSD column — DAX confirms only 2 types
-    let unitsOrganic=0, unitsSP=0;
-    try {
-      const r = await q(`SELECT
-        SUM(COALESCE(p.unitsOrganic,0)) as uo,
-        SUM(COALESCE(p.unitsPPC,0))     as up
-        FROM seller_board_product p
-        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci = a.asin
-        ${fp.w}`, fp.p, 45000);
-      unitsOrganic=parseInt(r[0]?.uo)||0; unitsSP=parseInt(r[0]?.up)||0;
-    } catch(e2) { console.warn('exec/detail units:', e2.message); }
-
-    // ── Q3: AMAZON FEES (FBA Fulfillment + Referral Commission) ──
-    // These columns may or may not exist in seller_board_product — isolated try/catch
-    let fbaFulfillment=0, commission=0;
-    try {
-      const r = await q(`SELECT
+    // Single query — all detail columns in one pass over seller_board_product
+    const mainQ = qc(`SELECT
+        ABS(SUM(COALESCE(p.sponsoredProducts,0)))      as sp,
+        ABS(SUM(COALESCE(p.sponsoredBrands,0)))        as sb,
+        ABS(SUM(COALESCE(p.sponsoredBrandsVideo,0)))   as sbv,
+        ABS(SUM(COALESCE(p.sponsoredDisplay,0)))       as sd,
+        SUM(COALESCE(p.unitsOrganic,0))                as uo,
+        SUM(COALESCE(p.unitsPPC,0))                    as up,
         ABS(SUM(COALESCE(p.FBAPerUnitFulfillmentFee,0))) as fba,
-        ABS(SUM(COALESCE(p.commission,0)))               as comm
+        ABS(SUM(COALESCE(p.commission,0)))             as comm,
+        SUM(COALESCE(p.promoValue,0))                  as pv,
+        SUM(COALESCE(p.salesOrganic,0))                as so,
+        SUM(COALESCE(p.salesPPC,0))                    as spc
         FROM seller_board_product p
-        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci = a.asin
-        ${fp.w}`, fp.p, 45000);
-      fbaFulfillment=parseFloat(r[0]?.fba)||0; commission=parseFloat(r[0]?.comm)||0;
-    } catch(e3) { console.warn('exec/detail fees:', e3.message); }
+        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
+        ${fp.w}`, fp.p, 55000);
 
-    // ── Q4: PROMO VALUE ──
-    // DAX: seller_board_product[promoValue]
-    let promo=0;
-    try {
-      const r = await q(`SELECT SUM(COALESCE(p.promoValue,0)) as pv
-        FROM seller_board_product p
-        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci = a.asin
-        ${fp.w}`, fp.p, 30000);
-      promo=parseFloat(r[0]?.pv)||0;
-    } catch(e4) { console.warn('exec/detail promo:', e4.message); }
+    // Sessions query (separate table, may not exist)
+    let tw='WHERE date BETWEEN ? AND ?'; const tp=[s,e];
+    { const _ac=accIdClauseRaw(accId); tw+=_ac.w; tp.push(..._ac.p); }
+    const sessQ = qc(`SELECT SUM(COALESCE(browserSessions,0)) as bs, SUM(COALESCE(mobileAppSessions,0)) as ms
+        FROM analytics_sale_traffic_by_date ${tw}`, tp, 20000).catch(()=>[{bs:0,ms:0}]);
 
-    // ── Q5: SESSIONS BROWSER/MOBILE BREAKDOWN ──
-    // DAX total sessions = seller_board_sales[sessions]
-    // Browser/mobile split from analytics_sale_traffic_by_date (optional table)
-    let browserSessions=0, mobileSessions=0;
-    try {
-      let tw='WHERE date BETWEEN ? AND ?'; const tp=[s,e];
-      { const _ac=accIdClauseRaw(accId); tw+=_ac.w; tp.push(..._ac.p); }
-      const r=await q(`SELECT
-        SUM(COALESCE(browserSessions,0))   as bs,
-        SUM(COALESCE(mobileAppSessions,0)) as ms
-        FROM analytics_sale_traffic_by_date ${tw}`,tp,30000);
-      browserSessions=parseFloat(r[0]?.bs)||0; mobileSessions=parseFloat(r[0]?.ms)||0;
-    } catch(e5) { /* table may not exist — silently skip */ }
+    const [mainRes, sessRes] = await Promise.all([
+      execLimiter(()=>mainQ),
+      sessQ,
+    ]);
 
-    // ── Q6: SALES BREAKDOWN (Organic / PPC) ──
-    // Source: seller_board_product[salesOrganic] + seller_board_product[salesPPC]
-    // Uses same fp (product) filter as other sub-queries
-    let salesOrganic=0, salesPPC=0;
-    try {
-      // Try seller_board_product first (filtered by seller/asin if needed)
-      const r=await q(`SELECT
-        SUM(COALESCE(p.salesOrganic,0)) as so,
-        SUM(COALESCE(p.salesPPC,0))     as sp_s
-        FROM seller_board_product p
-        LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci = a.asin
-        ${fp.w}`, fp.p, 45000);
-      salesOrganic=parseFloat(r[0]?.so)||0; salesPPC=parseFloat(r[0]?.sp_s)||0;
-    } catch(e6) {
-      // Fallback: seller_board_sales (no seller/asin filter available)
-      try {
-        const r=await q(`SELECT
-          SUM(COALESCE(sc.salesOrganic,0)) as so,
-          SUM(COALESCE(sc.salesPPC,0))     as sp_s
-          FROM ${salesFrom()} ${sw}`, sp, 45000);
-        salesOrganic=parseFloat(r[0]?.so)||0; salesPPC=parseFloat(r[0]?.sp_s)||0;
-      } catch(e6b) { console.warn('exec/detail sales breakdown:', e6b.message); }
-    }
+    const m = mainRes?.[0] || {};
+    const sess = Array.isArray(sessRes) ? (sessRes[0]||{}) : {};
 
-    res.json({ sp:sp_, sb, sbv, sd, fbaFulfillment, commission, unitsOrganic, unitsSP, promo, browserSessions, mobileSessions, salesOrganic, salesPPC });
+    res.json({
+      sp:     parseFloat(m.sp)||0,
+      sb:     parseFloat(m.sb)||0,
+      sbv:    parseFloat(m.sbv)||0,
+      sd:     parseFloat(m.sd)||0,
+      unitsOrganic:   parseInt(m.uo)||0,
+      unitsSP:        parseInt(m.up)||0,
+      fbaFulfillment: parseFloat(m.fba)||0,
+      commission:     parseFloat(m.comm)||0,
+      promo:          parseFloat(m.pv)||0,
+      salesOrganic:   parseFloat(m.so)||0,
+      salesPPC:       parseFloat(m.spc)||0,
+      browserSessions:  parseFloat(sess.bs)||0,
+      mobileSessions:   parseFloat(sess.ms)||0,
+    });
   } catch (e) { console.error('exec/detail:', e.message); res.status(500).json({ error: e.message }); }
 });
 
