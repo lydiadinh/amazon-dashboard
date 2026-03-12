@@ -2666,11 +2666,11 @@ export default function App(){
   const[live,setLive]=useState(false);
   const[dbRange,setDbRange]=useState(null);const[dbConnecting,setDbConnecting]=useState(true);
   const[mobileFilters,setMobileFilters]=useState(false);
-  // defaultEnd = latest DB date (set after dbRange loads). Init with VN time (UTC+7) as placeholder.
+  // sd/ed init empty — set from dbRange after load. Prevents fetching with wrong dates.
   const vnToday=new Date(Date.now()+7*3600000).toISOString().slice(0,10);
   const defaultEnd=vnToday;
   const defaultStart=new Date(Date.now()+7*3600000-30*86400000).toISOString().slice(0,10);
-  const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(defaultEnd);
+  const[sd,setSd]=useState('');const[ed,setEd]=useState('');
   const[activePeriod,setActivePeriod]=useState(null);
   const[selectedStores,setSelectedStores]=useState(()=>new Set());
   const[seller,setSeller]=useState("All");
@@ -2762,8 +2762,8 @@ export default function App(){
           if(dr){
             setDbRange(dr);
             const _refDate=dr.today||dr.maxDate||dr.defaultEnd;
-            if(dr.defaultStart) setSd(dr.defaultStart);
-            if(dr.defaultEnd)   setEd(dr.defaultEnd);
+            setSd(dr.defaultStart||defaultStart);
+            setEd(dr.defaultEnd||defaultEnd);
 // Zone A fetches itself via its own useEffect below
             console.log("DB date range loaded: refDate=",_refDate);
           }
@@ -2784,7 +2784,7 @@ export default function App(){
   const fetchParamsRef=useRef({sd,ed,store,seller,asinF});
   fetchParamsRef.current={sd,ed,store,seller,asinF};
   useEffect(()=>{
-    if(!live||dbConnecting)return;
+    if(!live||dbConnecting||!sd||!ed)return; // wait for dbRange to set real dates
     const timer=setTimeout(()=>setFetchTrigger(t=>t+1),400);
     return()=>clearTimeout(timer);
   },[sd,ed,store,seller,asinF,live,dbConnecting]);
@@ -2841,7 +2841,6 @@ export default function App(){
   },[fetchTrigger]);
 
   // ═══════════ ZONE A FETCH — self-contained, fetches its own refDate ═══════════
-  // ═══════════ ZONE A FETCH — self-contained, fetches its own refDate ═══════════
   useEffect(()=>{
     if(!live)return;
     let cancelled=false;
@@ -2854,7 +2853,8 @@ export default function App(){
         const dr=await api('date-range');
         refDate=dr?.today||dr?.maxDate||dr?.defaultEnd||null;
       }catch(e){}
-      if(cancelled||!refDate)return;
+      if(cancelled){setZoneALoading(false);return;}
+      if(!refDate){setZoneALoading(false);return;}
       const storeParam=storeStr==='All'?undefined:storeStr;
       const periods=getZoneAPeriods(zoneAPreset,refDate);
       const results=await Promise.allSettled(periods.map(p=>
