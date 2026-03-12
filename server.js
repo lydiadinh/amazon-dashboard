@@ -144,7 +144,8 @@ function makeLimiter(n) {
     if (running < n) run(); else queue.push(run);
   });
 }
-const execLimiter = makeLimiter(2); // max 2 exec/summary queries at once
+const summaryLimiter = makeLimiter(2); // max 2 concurrent exec/summary (heavy, full-scan)
+const detailLimiter  = makeLimiter(3); // max 3 concurrent exec/detail (single merged query, faster)
 
 function defDates(start, end) {
   return {
@@ -263,7 +264,7 @@ app.get('/api/exec/summary', async (req, res) => {
         SUM(COALESCE(p.netProfit,0)) as netProfit, SUM(COALESCE(p.estimatedPayout,0)) as estPayout,
         SUM(COALESCE(p.sessions,0)) as sessions, SUM(COALESCE(p.grossProfit,0)) as grossProfit
         FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin ${f.w}`;
-      rows = await execLimiter(()=>qc(sql, f.p, 55000));
+      rows = await summaryLimiter(()=>qc(sql, f.p, 55000));
     } else {
       const f = scWhere(s, e, accId);
       const sql = `SELECT SUM(${SC_SALES}) as sales, SUM(${SC_UNITS}) as units, SUM(COALESCE(sc.orders,0)) as orders,
@@ -273,7 +274,7 @@ app.get('/api/exec/summary', async (req, res) => {
         SUM(COALESCE(sc.netProfit,0)) as netProfit, SUM(COALESCE(sc.estimatedPayout,0)) as estPayout,
         SUM(COALESCE(sc.sessions,0)) as sessions, SUM(COALESCE(sc.grossProfit,0)) as grossProfit
         FROM ${salesFrom()} ${f.w}`;
-      rows = await execLimiter(()=>qc(sql, f.p, 55000));
+      rows = await summaryLimiter(()=>qc(sql, f.p, 55000));
       // COGS from seller_board_product (not in sales tables)
       try {
         let cw = 'WHERE p.date BETWEEN ? AND ?'; const cp = [s, e];
@@ -1230,7 +1231,7 @@ app.get('/api/exec/detail', async (req, res) => {
         FROM analytics_sale_traffic_by_date ${tw}`, tp, 20000).catch(()=>[{bs:0,ms:0}]);
 
     const [mainRes, sessRes] = await Promise.all([
-      execLimiter(()=>mainQ),
+      detailLimiter(()=>mainQ),
       sessQ,
     ]);
 
