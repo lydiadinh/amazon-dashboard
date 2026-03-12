@@ -2645,7 +2645,7 @@ function AiChat({t,pg,contextData}){
 
   // Floating button with unread badge if has history
   if(!open)return<button onClick={()=>setOpen(true)} style={{position:'fixed',bottom:mob?60:20,right:16,zIndex:999,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,color:'#fff',border:'none',borderRadius:16,padding:'12px 20px',cursor:'pointer',boxShadow:'0 4px 20px rgba(59,74,138,.35)',fontSize:13.5,fontWeight:600,fontFamily:AI_FONT,display:'flex',alignItems:'center',gap:6,transition:'transform .2s'}} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform=''}>
-    🤖 AI Chat{hasHistory&&<span style={{background:'rgba(255,255,255,.25)',borderRadius:8,padding:'1px 7px',fontSize:11}}>{msgs.length}</span>}
+    AI Chat{hasHistory&&<span style={{background:'rgba(255,255,255,.25)',borderRadius:8,padding:'1px 7px',fontSize:11}}>{msgs.length}</span>}
   </button>;
 
   const W=mob?'100%':'420px';
@@ -2658,9 +2658,9 @@ function AiChat({t,pg,contextData}){
       {/* Header */}
       <div style={{padding:'14px 16px',background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,flexShrink:0}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:AI_FONT}}>🤖 AI Assistant</div><div style={{fontSize:11,color:'rgba(255,255,255,.7)',marginTop:2,fontFamily:AI_FONT}}>Đang xem: {PG_LABEL[pg]||pg}</div></div>
+          <div><div style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:AI_FONT}}>AI Assistant</div><div style={{fontSize:11,color:'rgba(255,255,255,.7)',marginTop:2,fontFamily:AI_FONT}}>Đang xem: {PG_LABEL[pg]||pg}</div></div>
           <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            {hasHistory&&<button onClick={()=>setShowClear(v=>!v)} title="Xoá lịch sử" style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:12}}>🗑</button>}
+            {hasHistory&&<button onClick={()=>setShowClear(v=>!v)} title="Xoá lịch sử" style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:12}}>✕</button>}
             <button onClick={()=>setOpen(false)} style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:13}}>✕</button>
           </div>
         </div>
@@ -2676,14 +2676,14 @@ function AiChat({t,pg,contextData}){
       {/* Messages */}
       <div style={{flex:1,overflow:'auto',padding:'12px 16px'}}>
         {msgs.length===0&&!loading&&<div style={{textAlign:'center',padding:'24px 10px'}}>
-          <div style={{fontSize:16,fontWeight:800,color:t.primary,marginBottom:8}}>🤖</div>
+          <div style={{fontSize:16,fontWeight:800,color:t.primary,marginBottom:8}}>AI</div>
           <div style={{fontSize:15,fontWeight:600,color:t.text,marginBottom:4}}>Hỏi bất cứ điều gì về data!</div>
-          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI sẽ phân tích dựa trên data trang {PG_LABEL[pg]||pg} đang hiển thị.<br/>Bạn cũng có thể đính kèm ảnh 📎</div>
+          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI sẽ phân tích dựa trên data trang {PG_LABEL[pg]||pg} đang hiển thị.<br/>Bạn cũng có thể đính kèm ảnh ⊕</div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>{hints.map((h,i)=><button key={i} onClick={()=>send(h)} style={{padding:'10px 14px',borderRadius:10,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.textSec,fontSize:12.5,cursor:'pointer',textAlign:'left',fontFamily:AI_FONT,transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textSec}}>{h}</button>)}</div>
         </div>}
 
         {msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
-          {m.role==='ai'&&<div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0,marginRight:8,marginTop:2}}>🤖</div>}
+          {m.role==='ai'&&<div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0,marginRight:8,marginTop:2}}>AI</div>}
           <div style={{maxWidth:'82%',display:'flex',flexDirection:'column',gap:4,alignItems:m.role==='user'?'flex-end':'flex-start'}}>
             {m.image&&<img src={m.image} alt="attachment" style={{maxWidth:200,maxHeight:160,borderRadius:10,objectFit:'cover',border:'2px solid '+t.cardBorder}}/>}
             {m.text&&<div style={{padding:'10px 14px',borderRadius:m.role==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',background:m.role==='user'?`linear-gradient(135deg,${t.primary},#5A6BC5)`:t.inputBg,color:m.role==='user'?'#fff':t.textSec,fontSize:13.5,lineHeight:1.7,fontFamily:AI_FONT}}>{m.role==='user'?m.text:renderMd(m.text)}</div>}
@@ -2691,7 +2691,7 @@ function AiChat({t,pg,contextData}){
         </div>)}
 
         {loading&&<div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-          <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0}}>🤖</div>
+          <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0}}>AI</div>
           <div style={{padding:'10px 14px',borderRadius:'14px 14px 14px 4px',background:t.inputBg}}>
             <div style={{display:'flex',gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:'50%',background:t.textMuted,animation:`bounce .6s ${i*.15}s infinite alternate`}}/>)}</div>
             <style>{`@keyframes bounce{from{opacity:.3;transform:translateY(0)}to{opacity:1;transform:translateY(-4px)}}`}</style>
@@ -2715,7 +2715,7 @@ function AiChat({t,pg,contextData}){
         {/* Hidden file input */}
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{display:'none'}} onChange={onFileChange}/>
         {/* Attach button */}
-        <button onClick={pickImage} title="Đính kèm ảnh" style={{width:36,height:36,borderRadius:12,border:'1px solid '+t.inputBorder,background:image?t.primaryGhost:t.inputBg,color:image?t.primary:t.textMuted,cursor:'pointer',fontSize:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s'}}>📎</button>
+        <button onClick={pickImage} title="Đính kèm ảnh" style={{width:36,height:36,borderRadius:12,border:'1px solid '+t.inputBorder,background:image?t.primaryGhost:t.inputBg,color:image?t.primary:t.textMuted,cursor:'pointer',fontSize:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s'}}>⊕</button>
         <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder={image?'Thêm câu hỏi về ảnh... (tuỳ chọn)':'Nhập câu hỏi...'} style={{flex:1,padding:'11px 14px',borderRadius:12,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.text,fontSize:13.5,fontFamily:AI_FONT,outline:'none',boxSizing:'border-box'}}/>
         <button onClick={()=>send()} disabled={loading||(!input.trim()&&!image)} style={{width:36,height:36,borderRadius:12,border:'none',background:(!loading&&(input.trim()||image))?t.primary:t.inputBorder,color:(!loading&&(input.trim()||image))?'#fff':t.textMuted,cursor:(!loading&&(input.trim()||image))?'pointer':'default',fontSize:14,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>➤</button>
       </div>
