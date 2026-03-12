@@ -323,12 +323,17 @@ function MiniDonut({slices,t,size=72}){
 /* ══ StoreMultiSelect — shared checkbox dropdown for Zone A & Zone B ══ */
 function StoreMultiSelect({selected,onChange,opts=[],accentColor,accentBorder,accentText,t,zIndex=500}){
   const[open,setOpen]=useState(false);
+  const[dropPos,setDropPos]=useState({top:0,left:0,minWidth:220});
   const ref=useRef(null);
   useEffect(()=>{
     if(!open)return;
     const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
     document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
   },[open]);
+  const openDrop=()=>{
+    if(ref.current){const r=ref.current.getBoundingClientRect();setDropPos({top:r.bottom+4,left:r.left,minWidth:Math.max(220,r.width)});}
+    setOpen(v=>!v);
+  };
   const toggle=s=>{
     const next=new Set(selected);
     if(next.has(s))next.delete(s); else next.add(s);
@@ -339,11 +344,11 @@ function StoreMultiSelect({selected,onChange,opts=[],accentColor,accentBorder,ac
   const active=!allSelected;
   const BD=t.cardBorder; const DIV=t.divider; const S=t.text;
   return<div ref={ref} style={{position:'relative'}}>
-    <button onClick={()=>setOpen(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,background:t.card,border:'1.5px solid '+(active?accentBorder:accentBorder+'88'),borderRadius:9,padding:'6px 12px',fontSize:12,fontWeight:active?700:600,color:active?accentText:S,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
-      <span style={{fontSize:10}}>{active?'🏪 ':''}{label}</span>
+    <button onClick={openDrop} style={{display:'flex',alignItems:'center',gap:6,background:t.card,border:'1.5px solid '+(active?accentBorder:accentBorder+'88'),borderRadius:9,padding:'6px 12px',fontSize:12,fontWeight:active?700:600,color:active?accentText:S,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
+      <span style={{fontSize:10}}>{active?'':'​'}{label}</span>
       <span style={{fontSize:9,color:accentText,transition:'transform .2s',transform:open?'rotate(180deg)':'none'}}>▾</span>
     </button>
-    {open&&<div style={{position:'absolute',top:'calc(100% + 6px)',left:0,background:t.card,border:'1px solid '+BD,borderRadius:13,boxShadow:'0 16px 48px rgba(20,24,36,.18)',zIndex,minWidth:220,overflow:'hidden'}}>
+    {open&&ReactDOM.createPortal(<div style={{position:'fixed',top:dropPos.top,left:dropPos.left,background:t.card,border:'1px solid '+BD,borderRadius:13,boxShadow:'0 16px 48px rgba(20,24,36,.18)',zIndex:99990,minWidth:dropPos.minWidth,overflow:'hidden'}}>
       {/* All Shops row */}
       <div onClick={()=>{onChange(new Set());setOpen(false);}} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid '+DIV,background:allSelected?accentColor+'18':'transparent',transition:'background .1s'}}
         onMouseEnter={e=>e.currentTarget.style.background=allSelected?accentColor+'28':t.tableHover}
@@ -372,7 +377,7 @@ function StoreMultiSelect({selected,onChange,opts=[],accentColor,accentBorder,ac
         <span style={{fontSize:11,color:accentText,fontWeight:600}}>{selected.size} selected</span>
         <button onClick={()=>{onChange(new Set());}} style={{fontSize:11,fontWeight:700,color:accentColor,background:'transparent',border:'none',cursor:'pointer',padding:'2px 8px',borderRadius:6}}>Clear all</button>
       </div>}
-    </div>}
+    </div>,document.body)}
   </div>;
 }
 
@@ -631,6 +636,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
 
   /* ═══ ZONE A PRESET DROPDOWN ═══ */
   const[presetOpen,setPresetOpen]=useState(false);
+  const[presetPos,setPresetPos]=useState({top:0,left:0});
   const presetRef=useRef(null);
   useEffect(()=>{
     if(!presetOpen)return;
@@ -660,7 +666,7 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
     {/* ══════════════════════════════════════════════════
         ZONE A — PERIOD COMPARISON  (filter riêng trong header)
     ══════════════════════════════════════════════════ */}
-    <div style={{border:'2px solid #fed7aa',borderRadius:14,marginBottom:18,overflow:'hidden',background:t.card,boxShadow:'0 1px 4px rgba(20,24,36,.07)'}}>
+    <div style={{border:'2px solid #fed7aa',borderRadius:14,marginBottom:18,background:t.card,boxShadow:'0 1px 4px rgba(20,24,36,.07)'}}>
 
       {/* Zone A header */}
       <div style={{background:t.bg==='#0D0F1A'?'#1c1409':'linear-gradient(135deg,#fff7ed,#ffedd5)',borderBottom:'1px solid #fed7aa',padding:'11px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
@@ -672,17 +678,17 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
           <span style={{fontSize:10,fontWeight:700,color:'#9a3412'}}>Preset:</span>
           {/* Preset picker */}
           <div ref={presetRef} style={{position:'relative'}}>
-            <button onClick={()=>setPresetOpen(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,background:t.card,border:'1.5px solid #f97316',borderRadius:9,padding:'6px 12px',fontSize:11,fontWeight:700,color:'#c2410c',cursor:'pointer',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis'}}>
+            <button onClick={()=>{if(presetRef.current){const r=presetRef.current.getBoundingClientRect();setPresetPos({top:r.bottom+4,left:r.left});}setPresetOpen(v=>!v);}} style={{display:'flex',alignItems:'center',gap:6,background:t.card,border:'1.5px solid #f97316',borderRadius:9,padding:'6px 12px',fontSize:11,fontWeight:700,color:'#c2410c',cursor:'pointer',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis'}}>
               <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:240}}>{ZONE_A_PRESETS.find(p=>p.key===zoneAPreset)?.label||'Select preset'}</span>
               <span style={{fontSize:9,color:'#f97316',flexShrink:0,transition:'transform .2s',transform:presetOpen?'rotate(180deg)':'none'}}>▾</span>
             </button>
-            {presetOpen&&<div style={{position:'absolute',top:'calc(100% + 5px)',left:0,background:t.card,border:'1px solid '+BD,borderRadius:12,boxShadow:'0 12px 40px rgba(20,24,36,.15)',zIndex:500,overflow:'hidden',minWidth:430}}>
+            {presetOpen&&ReactDOM.createPortal(<div style={{position:'fixed',top:presetPos.top,left:presetPos.left,background:t.card,border:'1px solid '+BD,borderRadius:12,boxShadow:'0 12px 40px rgba(20,24,36,.15)',zIndex:99990,overflow:'hidden',minWidth:430}}>
               {ZONE_A_PRESETS.map(p=><div key={p.key} onClick={()=>{setZoneAPreset(p.key);setPresetOpen(false)}} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 16px',cursor:'pointer',fontSize:12,color:zoneAPreset===p.key?t.primary:S,borderBottom:'1px solid '+DIV,background:zoneAPreset===p.key?t.primaryGhost:'transparent',fontWeight:zoneAPreset===p.key?700:400,transition:'background .1s'}}
                 onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background=zoneAPreset===p.key?t.primaryGhost:'transparent'}>
                 <span style={{width:13,flexShrink:0,fontSize:11,color:t.primary}}>{zoneAPreset===p.key?'✓':''}</span>
                 {p.label}
               </div>)}
-            </div>}
+            </div>,document.body)}
           </div>
           {/* Zone A store filter — shared selectedStores, synced with Zone B */}
           <StoreMultiSelect selected={selectedStores} onChange={setSelectedStores} opts={storeOpts||[]}
@@ -2766,7 +2772,11 @@ export default function App(){
               // ed stays as today (defaultEnd)
             }
           }
-          // Inventory data is lazy-loaded when user navigates to Inventory tab
+          api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
+          api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
+          api("inventory/stock-trend",{store}).then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))).catch(()=>{});
+          api("inventory/storage-monthly",{store}).then(d=>setInvFeeMonthly(d||[])).catch(()=>{});
+          api("inventory/by-asin",{store}).then(d=>setInvAsin(d||[])).catch(()=>{});
         }
       }catch(e){console.error("INIT ERROR:",e)}
       setDbConnecting(false);
@@ -2803,63 +2813,37 @@ export default function App(){
       if(cancelled)return;
       setEm(summary&&summary.sales!=null?summary:EMPTY_EM);
       setFDaily(arr(daily).map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+"T12:00:00");const label=isNaN(dt)?ds:MS[dt.getMonth()]+" "+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0,advCost:parseFloat(r.advCost)||0,sessions:parseInt(r.sessions)||0}}));
-      // Batch 2: exec secondary data — prev period + detail + shop-extended + LY daily
-      const[prev]=await Promise.all([
+      // Batch 2: secondary data + prev period (non-blocking)
+      const[prev,asins,shops,team]=await Promise.all([
         api("exec/summary",{...p,start:ps.toISOString().slice(0,10),end:pe.toISOString().slice(0,10)}).catch(()=>null),
+        api("product/asins",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
+        api("shops",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
+        api("team",{start:_sd,end:_ed,seller:_sl,store:_st,asin:_af}).catch(e=>{setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];}),
       ]);
       if(cancelled)return;
       setPrevEm(prev&&prev.sales?prev:null);
+      // Fetch SPLY (same period last year) — non-blocking
       const lyS=new Date(_sd+'T00:00:00');lyS.setFullYear(lyS.getFullYear()-1);
       const lyE=new Date(_ed+'T00:00:00');lyE.setFullYear(lyE.getFullYear()-1);
       const lyStart=lyS.toISOString().slice(0,10),lyEnd=lyE.toISOString().slice(0,10);
       api('exec/detail',{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&d)setExecDetail(d)}).catch(()=>{});
       api('exec/shop-extended',{start:_sd,end:_ed,store:_st,seller:_sl}).then(d=>{if(!cancelled&&Array.isArray(d))setShopExt(d)}).catch(()=>{});
       api('exec/daily',{start:lyStart,end:lyEnd,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&Array.isArray(d))setDailyLY(d.map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+'T12:00:00');const label=isNaN(dt)?ds:MS[dt.getMonth()]+' '+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0}}))}).catch(()=>{});
-      // Trigger lazy-load for current page data (product/asins, shops, team, inventory)
-      setPageDataTrigger(n=>n+1);
+      setFAsin(arr(asins).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
+      setFShopData(arr(shops).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,gp:parseFloat(r.grossProfit)||parseFloat(r.netProfit)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0,u:parseInt(r.units)||0,ad:parseFloat(r.ads)||0,sv:parseFloat(r.stockValue)||0,gpP:parseFloat(r.gpPlan)||0,rvP:parseFloat(r.rvPlan)||0,adP:parseFloat(r.adPlan)||0,unP:parseFloat(r.unPlan)||0})));
+      setFSeller(arr(team).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
     }catch(e){console.error("Fetch error:",e)}
-    if(!cancelled)setLoading(false);})();
-    return()=>{cancelled=true};
-  },[fetchTrigger]);
-
-  // ═══════════ LAZY PAGE DATA — only load when user is on that page ═══════════
-  // pageDataTrigger increments when: (a) user navigates to a page, (b) filters change
-  const[pageDataTrigger,setPageDataTrigger]=useState(0);
-  const pageDataRef=useRef({pg,sd,ed,store,seller,asinF});
-  pageDataRef.current={pg,sd,ed,store,seller,asinF};
-
-  // Fire pageDataTrigger when pg changes (tab switch) or filters change
-  useEffect(()=>{
-    if(!live||dbConnecting)return;
-    setPageDataTrigger(n=>n+1);
-  },[pg,live,dbConnecting]);
-
-  // The actual lazy fetch — reads current pg from ref
-  useEffect(()=>{
-    if(!live||dbConnecting||pageDataTrigger===0)return;
-    const{pg:_pg,sd:_sd,ed:_ed,store:_st,seller:_sl,asinF:_af}=pageDataRef.current;
-    const p={start:_sd,end:_ed,store:_st,seller:_sl,asin:_af};
-    let cancelled=false;
-    const arr=v=>Array.isArray(v)?v:[];
-
-    if(_pg==='prod'||_pg==='exec'){
-      api("product/asins",p).then(d=>{if(!cancelled)setFAsin(arr(d).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})))}).catch(()=>{});
-    }
-    if(_pg==='shops'||_pg==='exec'){
-      api("shops",p).then(d=>{if(!cancelled)setFShopData(arr(d).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,gp:parseFloat(r.grossProfit)||parseFloat(r.netProfit)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0,u:parseInt(r.units)||0,ad:parseFloat(r.ads)||0,sv:parseFloat(r.stockValue)||0,gpP:parseFloat(r.gpPlan)||0,rvP:parseFloat(r.rvPlan)||0,adP:parseFloat(r.adPlan)||0,unP:parseFloat(r.unPlan)||0})))}).catch(()=>{});
-    }
-    if(_pg==='team'){
-      api("team",p).then(d=>{if(!cancelled)setFSeller(arr(d).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})))}).catch(()=>{});
-    }
-    if(_pg==='inv'){
+    // Re-fetch inventory when store changes
+    if(!cancelled){
       api("inventory/snapshot",{store:_st}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
-      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop(arr(d).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
-      api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend(arr(d).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
+      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
+      api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
       api("inventory/storage-monthly",{store:_st}).then(d=>{if(!cancelled)setInvFeeMonthly(d||[])}).catch(()=>{});
       api("inventory/by-asin",{store:_st,seller:_sl}).then(d=>{if(!cancelled)setInvAsin(d||[])}).catch(()=>{});
     }
+    if(!cancelled)setLoading(false);})();
     return()=>{cancelled=true};
-  },[pageDataTrigger]);
+  },[fetchTrigger]);
 
   // ═══════════ ZONE A FETCH — exec/summary only (detail is lazy on More click) ═══════════
   const zoneAParamsRef=useRef({zoneAPreset,storeStr});
