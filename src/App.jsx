@@ -2594,8 +2594,8 @@ function AiChat({t,pg,contextData}){
     const file=e.target.files?.[0];
     if(!file)return;
     const allowed=['image/jpeg','image/png','image/gif','image/webp'];
-    if(!allowed.includes(file.type)){alert('Chỉ hỗ trợ JPG, PNG, GIF, WEBP');return;}
-    if(file.size>4*1024*1024){alert('Ảnh tối đa 4MB');return;}
+    if(!allowed.includes(file.type)){alert('Only JPG, PNG, GIF, WEBP supported');return;}
+    if(file.size>4*1024*1024){alert('Max image size is 4MB');return;}
     const reader=new FileReader();
     reader.onload=(ev)=>setImage({dataUrl:ev.target.result,mimeType:file.type,name:file.name});
     reader.readAsDataURL(file);
@@ -2606,19 +2606,19 @@ function AiChat({t,pg,contextData}){
     const q=text||input.trim();
     if((!q&&!image)||loading)return;
     setInput('');
-    const userMsg={role:'user',text:q||(image?'[Ảnh đính kèm]':''),image:image?.dataUrl||null,imageType:image?.mimeType||null};
+    const userMsg={role:'user',text:q||(image?'[Image attached]':''),image:image?.dataUrl||null,imageType:image?.mimeType||null};
     setMsgs(prev=>[...prev,userMsg]);
     const imgSnap=image;
     setImage(null);
     setLoading(true);
     const ctx=buildCtx(pg,contextData);
     try{
-      const body={context:ctx,question:q||(imgSnap?'Phân tích ảnh này':''),history:msgs.slice(-8)};
+      const body={context:ctx,question:q||(imgSnap?'Analyze this image':''),history:msgs.slice(-8)};
       if(imgSnap){body.image=imgSnap.dataUrl;body.imageType=imgSnap.mimeType;}
       const data=await apiPost('ai/insight',body);
-      setMsgs(prev=>[...prev,{role:'ai',text:data.insight||'Không thể phân tích.'}]);
+      setMsgs(prev=>[...prev,{role:'ai',text:data.insight||'Unable to analyze.'}]);
     }catch(e){
-      setMsgs(prev=>[...prev,{role:'ai',text:`Chưa kết nối AI (cần ANTHROPIC_API_KEY trong Railway).\n\nLỗi: ${e.message}`}]);
+      setMsgs(prev=>[...prev,{role:'ai',text:`AI not connected (add ANTHROPIC_API_KEY to Railway).\n\nError: ${e.message}`}]);
     }
     setLoading(false);
   };
@@ -2658,17 +2658,17 @@ function AiChat({t,pg,contextData}){
       {/* Header */}
       <div style={{padding:'14px 16px',background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,flexShrink:0}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:AI_FONT}}>AI Assistant</div><div style={{fontSize:11,color:'rgba(255,255,255,.7)',marginTop:2,fontFamily:AI_FONT}}>Đang xem: {PG_LABEL[pg]||pg}</div></div>
+          <div><div style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:AI_FONT}}>AI Assistant</div><div style={{fontSize:11,color:'rgba(255,255,255,.7)',marginTop:2,fontFamily:AI_FONT}}>Viewing: {PG_LABEL[pg]||pg}</div></div>
           <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            {hasHistory&&<button onClick={()=>setShowClear(v=>!v)} title="Xoá lịch sử" style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:12}}>✕</button>}
+            {hasHistory&&<button onClick={()=>setShowClear(v=>!v)} title="Clear history" style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:12}}>✕</button>}
             <button onClick={()=>setOpen(false)} style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:13}}>✕</button>
           </div>
         </div>
         {showClear&&<div style={{marginTop:10,padding:'8px 12px',background:'rgba(0,0,0,.2)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <span style={{fontSize:12,color:'#fff'}}>Xoá toàn bộ lịch sử trang này?</span>
+          <span style={{fontSize:12,color:'#fff'}}>Clear all history for this page?</span>
           <div style={{display:'flex',gap:6}}>
-            <button onClick={clearHistory} style={{background:'#ef4444',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11,fontWeight:600}}>Xoá</button>
-            <button onClick={()=>setShowClear(false)} style={{background:'rgba(255,255,255,.2)',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11}}>Huỷ</button>
+            <button onClick={clearHistory} style={{background:'#ef4444',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11,fontWeight:600}}>Clear</button>
+            <button onClick={()=>setShowClear(false)} style={{background:'rgba(255,255,255,.2)',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11}}>Cancel</button>
           </div>
         </div>}
       </div>
@@ -2677,8 +2677,8 @@ function AiChat({t,pg,contextData}){
       <div style={{flex:1,overflow:'auto',padding:'12px 16px'}}>
         {msgs.length===0&&!loading&&<div style={{textAlign:'center',padding:'24px 10px'}}>
           <div style={{fontSize:16,fontWeight:800,color:t.primary,marginBottom:8}}>AI</div>
-          <div style={{fontSize:15,fontWeight:600,color:t.text,marginBottom:4}}>Hỏi bất cứ điều gì về data!</div>
-          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI sẽ phân tích dựa trên data trang {PG_LABEL[pg]||pg} đang hiển thị.<br/>Bạn cũng có thể đính kèm ảnh ⊕</div>
+          <div style={{fontSize:15,fontWeight:600,color:t.text,marginBottom:4}}>Ask anything about your data!</div>
+          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI will analyze based on data from the {PG_LABEL[pg]||pg} page currently displayed.<br/>You can also attach an image ⊕</div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>{hints.map((h,i)=><button key={i} onClick={()=>send(h)} style={{padding:'10px 14px',borderRadius:10,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.textSec,fontSize:12.5,cursor:'pointer',textAlign:'left',fontFamily:AI_FONT,transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textSec}}>{h}</button>)}</div>
         </div>}
 
@@ -2705,7 +2705,7 @@ function AiChat({t,pg,contextData}){
         <img src={image.dataUrl} alt="preview" style={{width:48,height:48,objectFit:'cover',borderRadius:8,border:'1px solid '+t.cardBorder}}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11.5,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{image.name}</div>
-          <div style={{fontSize:10.5,color:t.textMuted}}>Sẵn sàng gửi</div>
+          <div style={{fontSize:10.5,color:t.textMuted}}>Ready to send</div>
         </div>
         <button onClick={()=>setImage(null)} style={{background:'none',border:'none',color:t.textMuted,cursor:'pointer',fontSize:16,padding:4}}>✕</button>
       </div>}
@@ -2715,8 +2715,8 @@ function AiChat({t,pg,contextData}){
         {/* Hidden file input */}
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{display:'none'}} onChange={onFileChange}/>
         {/* Attach button */}
-        <button onClick={pickImage} title="Đính kèm ảnh" style={{width:36,height:36,borderRadius:12,border:'1px solid '+t.inputBorder,background:image?t.primaryGhost:t.inputBg,color:image?t.primary:t.textMuted,cursor:'pointer',fontSize:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s'}}>⊕</button>
-        <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder={image?'Thêm câu hỏi về ảnh... (tuỳ chọn)':'Nhập câu hỏi...'} style={{flex:1,padding:'11px 14px',borderRadius:12,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.text,fontSize:13.5,fontFamily:AI_FONT,outline:'none',boxSizing:'border-box'}}/>
+        <button onClick={pickImage} title="Attach image" style={{width:36,height:36,borderRadius:12,border:'1px solid '+t.inputBorder,background:image?t.primaryGhost:t.inputBg,color:image?t.primary:t.textMuted,cursor:'pointer',fontSize:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s'}}>⊕</button>
+        <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder={image?'Add a question about the image... (optional)':'Ask a question...'} style={{flex:1,padding:'11px 14px',borderRadius:12,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.text,fontSize:13.5,fontFamily:AI_FONT,outline:'none',boxSizing:'border-box'}}/>
         <button onClick={()=>send()} disabled={loading||(!input.trim()&&!image)} style={{width:36,height:36,borderRadius:12,border:'none',background:(!loading&&(input.trim()||image))?t.primary:t.inputBorder,color:(!loading&&(input.trim()||image))?'#fff':t.textMuted,cursor:(!loading&&(input.trim()||image))?'pointer':'default',fontSize:14,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>➤</button>
       </div>
     </div>
