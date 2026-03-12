@@ -487,8 +487,9 @@ app.get('/api/inventory/snapshot', async (req, res) => {
         ON f.accountId = latest.aid AND f.date = latest.maxDate
       WHERE 1=1${extra}`, params);
 
-    // Storage fee: use the LAST snapshot date of the CURRENT month only
-    // (sum per-SKU on one day = correct estimate; summing across dates = inflated)
+    // Storage fee: reuse EXACT same logic as /api/inventory/storage-monthly
+    // → pick rows where date = MAX(date) per month, then take the latest month
+    // This guarantees KPI matches the history table below
     let storageFee = 0;
     try {
       let sfExtra = ''; const sfParams = [];
@@ -496,19 +497,13 @@ app.get('/api/inventory/snapshot', async (req, res) => {
       const sfRows = await qc(`
         SELECT SUM(COALESCE(estimatedStorageCostNextMonth,0)) as fee
         FROM fba_iventory_planning
-        WHERE date = (
-          SELECT MAX(date) FROM fba_iventory_planning
-          WHERE DATE_FORMAT(date,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')
+        WHERE date IN (
+          SELECT MAX(date) FROM fba_iventory_planning GROUP BY DATE_FORMAT(date,'%Y-%m')
+        )
+        AND DATE_FORMAT(date,'%Y-%m') = (
+          SELECT DATE_FORMAT(MAX(date),'%Y-%m') FROM fba_iventory_planning
         )${sfExtra}`, sfParams, 15000);
       storageFee = parseFloat(sfRows[0]?.fee) || 0;
-      // Fallback: if no data this month, use latest available snapshot date
-      if (!storageFee) {
-        const sfFb = await qc(`
-          SELECT SUM(COALESCE(estimatedStorageCostNextMonth,0)) as fee
-          FROM fba_iventory_planning
-          WHERE date = (SELECT MAX(date) FROM fba_iventory_planning)${sfExtra}`, sfParams, 15000);
-        storageFee = parseFloat(sfFb[0]?.fee) || 0;
-      }
     } catch(e) { /* fallback to 0 */ }
 
     const r = rows[0]||{};
@@ -527,7 +522,7 @@ app.get('/api/inventory/snapshot', async (req, res) => {
       criticalSkus: parseInt(r.criticalSkus)||0, avgDaysOfSupply: Math.round(parseFloat(r.avgDaysOfSupply)||0),
       age0_90: parseInt(r.a0)||0, age91_180: parseInt(r.a91)||0, age181_270: parseInt(r.a181)||0,
       age271_365: parseInt(r.a271)||0, age365plus: parseInt(r.a365)||0,
-      storageFee: parseFloat(r.storageFee)||0, avgSellThrough: parseFloat(r.avgSellThrough)||0
+      storageFee: storageFee, avgSellThrough: parseFloat(r.avgSellThrough)||0
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
