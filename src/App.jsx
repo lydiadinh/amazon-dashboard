@@ -378,7 +378,7 @@ function StoreMultiSelect({selected,onChange,opts=[],accentColor,accentBorder,ac
 
 function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,pctChg,mob,onAsinClick,splyEm,dailyLY,shopExt,
   store,seller,setStore,setSeller,storeOpts,sellerOpts,onApplyZoneB,
-  zoneATileData,zoneAPreset,setZoneAPreset,zoneALoading,selectedStores,setSelectedStores}){
+  zoneATileData,setZoneATileData,zoneAPreset,setZoneAPreset,zoneALoading,selectedStores,setSelectedStores}){
   const[selMetrics,setSelMetrics]=useState(['SALES','ADV.COST','NET PROFIT','SESSIONS']);
   const[expandedRows,setExpandedRows]=useState(new Set());
   const[showDetail,setShowDetail]=useState(false);
@@ -2994,7 +2994,7 @@ export default function App(){
           storeOpts={opts.stores} sellerOpts={opts.sellers}
           selectedStores={selectedStores} setSelectedStores={setSelectedStores}
           onApplyZoneB={()=>setFetchTrigger(v=>v+1)}
-          zoneATileData={zoneATileData} zoneAPreset={zoneAPreset} setZoneAPreset={setZoneAPreset}
+          zoneATileData={zoneATileData} setZoneATileData={setZoneATileData} zoneAPreset={zoneAPreset} setZoneAPreset={setZoneAPreset}
           zoneALoading={zoneALoading}
         />}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend} invFeeMonthly={invFeeMonthly} invAsin={invAsin} onAsinClick={setStockAsin}/>}
