@@ -598,15 +598,27 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   /* ═══ ZONE A — TILE DRAWER STATE ═══ */
   const[openTiles,setOpenTiles]=useState(new Set());
   const[tileExpandedRows,setTileExpandedRows]=useState({});
+  const[tileErrors,setTileErrors]=useState({});
   const toggleTile=(id,tile)=>{
     setOpenTiles(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
-    // Lazy-load detail when opening for the first time
-    if(tile&&tile.detail===null){
+    if(tile&&tile.detail===null&&!tileErrors[id]){
       const storeParam=tile.start&&store!=='All'?store:undefined;
+      // 30s client-side timeout so it never stays "Loading..." forever
+      const controller=new AbortController();
+      const timer=setTimeout(()=>{
+        controller.abort();
+        setTileErrors(prev=>({...prev,[id]:'Timed out — click retry'}));
+        setZoneATileData(prev=>prev.map(t=>t.id===id?{...t,detail:{}}:t));
+      },30000);
       api('exec/detail',{start:tile.start,end:tile.end,store:storeParam})
         .then(d=>{
+          clearTimeout(timer);
+          setTileErrors(prev=>{const n={...prev};delete n[id];return n;});
           setZoneATileData(prev=>prev.map(t=>t.id===id?{...t,detail:d||{}}:t));
-        }).catch(()=>{
+        }).catch(err=>{
+          clearTimeout(timer);
+          const msg=err?.message||'Error loading detail';
+          setTileErrors(prev=>({...prev,[id]:msg}));
           setZoneATileData(prev=>prev.map(t=>t.id===id?{...t,detail:{}}:t));
         });
     }
@@ -688,9 +700,10 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
           const isOpen=openTiles.has(tile.id);
           const numSt={fontSize:14,fontWeight:700,color:t.text};
           const numSmSt={fontSize:12,fontWeight:700,color:t.text};
+          const tileErr=tileErrors[tile.id];
           const dr=isOpen&&tile.detail!==null?buildDetailRows(tile.em,tile.detail||{}):null;
           const expRows=tileExpandedRows[tile.id]||new Set();
-          const loadingDetail=isOpen&&tile.detail===null;
+          const loadingDetail=isOpen&&tile.detail===null&&!tileErr;
           return<div key={tile.id} style={{flex:1,minWidth:220,maxWidth:320,borderRight:ti<zoneATileData.length-1?'1px solid '+DIV:'none',display:'flex',flexDirection:'column'}}>
             {/* Color bar */}
             <div style={{height:4,background:tileColor,flexShrink:0}}/>
@@ -734,7 +747,20 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
             {/* Per-tile detail drawer */}
             {isOpen&&(
               <div style={{borderTop:'2px solid '+tileColor,background:t.tableBg}}>
-                {loadingDetail&&<div style={{padding:'18px 14px',color:t.textMuted,fontSize:11,textAlign:'center'}}>Loading...</div>}
+                {loadingDetail&&<div style={{padding:'18px 14px',textAlign:'center'}}>
+                  <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Loading detail…</div>
+                  <div style={{width:28,height:28,borderRadius:'50%',border:'3px solid '+tileColor+'44',borderTopColor:tileColor,animation:'spin 0.8s linear infinite',margin:'0 auto'}}/>
+                </div>}
+                {tileErr&&<div style={{padding:'14px',textAlign:'center'}}>
+                  <div style={{fontSize:11,color:t.red,marginBottom:8}}>⚠ {tileErr}</div>
+                  <button onClick={()=>{
+                    setTileErrors(prev=>{const n={...prev};delete n[tile.id];return n;});
+                    setZoneATileData(prev=>prev.map(tt=>tt.id===tile.id?{...tt,detail:null}:tt));
+                    setTimeout(()=>toggleTile(tile.id,{...tile,detail:null}),50);
+                  }} style={{fontSize:10,fontWeight:700,color:tileColor,background:'transparent',border:'1px solid '+tileColor,borderRadius:6,padding:'4px 12px',cursor:'pointer'}}>
+                    Retry ↺
+                  </button>
+                </div>}
                 {!loadingDetail&&dr&&dr.map((row,ri)=>{
                   const hasSub=row.sub&&row.sub.length>0;
                   const isExp=expRows.has(row.id);
