@@ -788,7 +788,8 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
             )}
           </div>;
         })}
-        {!zoneALoading&&zoneATileData.length===0&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select a preset above and ensure DB is connected.</div>}
+        {!zoneALoading&&zoneATileData.length===0&&zoneARefDate&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select a preset above and ensure DB is connected.</div>}
+        {!zoneALoading&&zoneATileData.length===0&&!zoneARefDate&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>⏳ Loading date range...</div>}
       </div>
 
     </div>
@@ -2708,6 +2709,7 @@ export default function App(){
 
   // ═══ ZONE A STATE ═══
   const[zoneAPreset,setZoneAPreset]=useState('tod_7_14_30');
+  const[zoneARefDate,setZoneARefDate]=useState(null); // set after dbRange loads
   // zoneAStore is derived from selectedStores (shared with Zone B)
   const[zoneATileData,setZoneATileData]=useState([]);
   const[zoneALoading,setZoneALoading]=useState(false);
@@ -2761,13 +2763,11 @@ export default function App(){
           const dr=await api("date-range").catch(()=>null);
           if(dr){
             setDbRange(dr);
-            // End date = always today, start = 30 days ago (or dr.defaultStart)
-            if(dr.defaultStart){
-              console.log("DB date range: min=",dr.minDate,"max=",dr.maxDate,"defaultEnd=",dr.defaultEnd);
-              setSd(dr.defaultStart);
-              // ed = latest date in DB, not server clock
-              if(dr.defaultEnd) setEd(dr.defaultEnd);
-            }
+            const _refDate=dr.today||dr.maxDate||dr.defaultEnd;
+            if(_refDate) setZoneARefDate(_refDate); // triggers Zone A fetch with correct date
+            if(dr.defaultStart) setSd(dr.defaultStart);
+            if(dr.defaultEnd)   setEd(dr.defaultEnd);
+            console.log("DB date range loaded: refDate=",_refDate,"min=",dr.minDate,"max=",dr.maxDate);
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
           api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
@@ -2842,22 +2842,15 @@ export default function App(){
     return()=>{cancelled=true};
   },[fetchTrigger]);
 
-  // ═══════════ ZONE A FETCH — exec/summary only (detail is lazy on More click) ═══════════
-  const zoneAParamsRef=useRef({zoneAPreset,storeStr});
-  zoneAParamsRef.current={zoneAPreset,storeStr};
+  // ═══════════ ZONE A FETCH — triggered by zoneARefDate (set after dbRange loads) ═══════════
   useEffect(()=>{
-    if(!live||dbConnecting)return;
-    // Compute refDate directly here — not from ref — to avoid stale closure
-    const refDate=dbRange?.today||dbRange?.maxDate;
-    if(!refDate)return; // dbRange not loaded yet, will re-run when it loads
+    if(!live||!zoneARefDate)return; // wait until dbRange has loaded and set refDate
     let cancelled=false;
-    const{zoneAPreset:_preset,storeStr:_store}=zoneAParamsRef.current;
-    const periods=getZoneAPeriods(_preset, refDate);
+    const periods=getZoneAPeriods(zoneAPreset, zoneARefDate);
     if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
-    // Fetch ALL summaries in parallel — summary is light (1 query each)
-    const storeParam=_store==='All'?undefined:_store;
+    const storeParam=storeStr==='All'?undefined:storeStr;
     Promise.allSettled(periods.map(p=>
       api('exec/summary',{start:p.start,end:p.end,store:storeParam})
         .then(emRaw=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM,detail:null}))
@@ -2868,7 +2861,7 @@ export default function App(){
       setZoneALoading(false);
     });
     return()=>{cancelled=true};
-  },[zoneAPreset,storeStr,live,dbConnecting,dbRange]);
+  },[zoneAPreset,storeStr,live,zoneARefDate]);
 
   // ═══════════ FETCH PLAN DATA (debounced) ═══════════
   const [planTrigger,setPlanTrigger]=useState(0);
