@@ -225,11 +225,12 @@ app.get('/api/date-range', async (req, res) => {
     const r = rows[0] || {};
     const maxDate = r.maxDate ? new Date(r.maxDate).toISOString().slice(0,10) : null;
     const minDate = r.minDate ? new Date(r.minDate).toISOString().slice(0,10) : null;
-    const today = new Date().toISOString().slice(0,10);
-    let defaultStart = new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    // today = ngày mới nhất trong DB (không dùng đồng hồ server vì Railway chạy UTC, data lag 1-3 ngày)
+    const today = maxDate || new Date().toISOString().slice(0,10);
+    const todayMs = new Date(today+'T00:00:00').getTime();
+    let defaultStart = new Date(todayMs-29*86400000).toISOString().slice(0,10);
     if (minDate && defaultStart < minDate) defaultStart = minDate;
-    // End date = today always
-    res.json({ minDate, maxDate, defaultStart, defaultEnd: today });
+    res.json({ minDate, maxDate, defaultStart, defaultEnd: today, today });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
