@@ -539,7 +539,19 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
   /* ═══ ZONE A — TILE DRAWER STATE ═══ */
   const[openTiles,setOpenTiles]=useState(new Set());
   const[tileExpandedRows,setTileExpandedRows]=useState({});
-  const toggleTile=id=>setOpenTiles(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
+  const toggleTile=(id,tile)=>{
+    setOpenTiles(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
+    // Lazy-load detail when opening for the first time
+    if(tile&&tile.detail===null){
+      const storeParam=tile.start&&zoneAStore!=='All'?zoneAStore:undefined;
+      api('exec/detail',{start:tile.start,end:tile.end,store:storeParam})
+        .then(d=>{
+          setZoneATileData(prev=>prev.map(t=>t.id===id?{...t,detail:d||{}}:t));
+        }).catch(()=>{
+          setZoneATileData(prev=>prev.map(t=>t.id===id?{...t,detail:{}}:t));
+        });
+    }
+  };
   const toggleTileRow=(tileId,rowId)=>setTileExpandedRows(prev=>{
     const s=new Set(prev[tileId]||[]);
     s.has(rowId)?s.delete(rowId):s.add(rowId);
@@ -618,117 +630,92 @@ function ExecPage({t,fAsin,fShop,fDaily,em,sd,ed,setSd,setEd,prevEm,prevPeriod,p
         </div>
       </div>
 
-      {/* Tiles row — fixed layout, More button stays pinned at bottom of each tile */}
-      <div style={{display:'flex',overflowX:'auto',alignItems:'stretch'}}>
+      {/* Tiles + per-tile detail drawer — all in one flex row, each tile is its own column */}
+      <div style={{display:'flex',overflowX:'auto',alignItems:'flex-start'}}>
         {zoneALoading&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>Loading...</div>}
         {!zoneALoading&&zoneATileData.map((tile,ti)=>{
           const tileColor=TILE_COLORS[ti%TILE_COLORS.length];
           const tileNP=tile.em?.netProfit||0;
           const tileSales=tile.em?.sales||0;
-          const tileChg=tile.prevSales!=null&&tile.prevSales!==0?((tileSales-tile.prevSales)/Math.abs(tile.prevSales)*100):null;
+          const isOpen=openTiles.has(tile.id);
           const numSt={fontSize:14,fontWeight:700,color:t.text};
           const numSmSt={fontSize:12,fontWeight:700,color:t.text};
-          return<div key={tile.id} style={{flex:1,minWidth:190,borderRight:ti<zoneATileData.length-1?'1px solid '+DIV:'none',display:'flex',flexDirection:'column'}}>
+          const dr=isOpen&&tile.detail!==null?buildDetailRows(tile.em,tile.detail||{}):null;
+          const expRows=tileExpandedRows[tile.id]||new Set();
+          const loadingDetail=isOpen&&tile.detail===null;
+          return<div key={tile.id} style={{flex:1,minWidth:220,maxWidth:320,borderRight:ti<zoneATileData.length-1?'1px solid '+DIV:'none',display:'flex',flexDirection:'column'}}>
             {/* Color bar */}
             <div style={{height:4,background:tileColor,flexShrink:0}}/>
-            {/* Tile body — fills available space */}
-            <div style={{padding:'14px 16px 10px',flex:1,display:'flex',flexDirection:'column'}}>
+            {/* Tile summary */}
+            <div style={{padding:'14px 14px 10px',display:'flex',flexDirection:'column'}}>
               <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:1}}>{tile.label}</div>
-              <div style={{fontSize:10,color:t.textMuted,marginBottom:12,lineHeight:1.4}}>{tile.dateLabel}</div>
-              {/* Sales */}
-              <div style={{paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.6,marginBottom:3}}>Sales</div>
-                <div style={numSt}>{$2(tileSales)}</div>
-                {tileChg!=null&&<span style={{fontSize:10,fontWeight:600,color:tileChg>=0?t.green:t.red}}>{tileChg>=0?'↑':'↓'}{Math.abs(tileChg).toFixed(1)}%</span>}
-              </div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:10,lineHeight:1.4}}>{tile.dateLabel}</div>
               {/* Orders/Units + Refunds */}
-              <div style={{display:'flex',gap:12,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Orders / Units</div><div style={numSmSt}>{N(tile.em?.orders||0)} / {N(tile.em?.units||0)}</div></div>
-                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Refunds</div><div style={{...numSmSt,color:(tile.em?.refunds||0)>5?t.orange:t.text}}>{N(tile.em?.refunds||0)}</div></div>
+              <div style={{display:'flex',gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:2}}>Orders / Units</div>
+                  <div style={numSmSt}>{N(tile.em?.orders||0)} / {N(tile.em?.units||0)}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:2}}>Refunds</div>
+                  <div style={{...numSmSt,color:(tile.em?.refunds||0)>5?t.orange:t.text}}>{N(tile.em?.refunds||0)}</div>
+                </div>
               </div>
               {/* Adv. cost + Est. payout */}
-              <div style={{display:'flex',gap:12,paddingBottom:8,marginBottom:8,borderBottom:'1px solid '+DIV}}>
-                <div style={{flex:1}}><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Adv. cost</div><div style={numSmSt}>{$2(Math.abs(tile.em?.advCost||0))}</div></div>
-                <div><div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Est. payout</div><div style={numSmSt}>{$2(tile.em?.estPayout||0)}</div></div>
+              <div style={{display:'flex',gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:2}}>Adv. Cost</div>
+                  <div style={numSmSt}>{$2(Math.abs(tile.em?.advCost||0))}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:2}}>Est. Payout</div>
+                  <div style={numSmSt}>{$2(tile.em?.estPayout||0)}</div>
+                </div>
               </div>
               {/* Net profit */}
-              <div style={{flex:1}}>
-                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:3}}>Net profit</div>
-                <div style={{fontSize:14,fontWeight:700,color:tileNP>=0?t.green:t.red}}>{$2(tileNP)}</div>
+              <div style={{paddingTop:6,borderTop:'1px solid '+DIV}}>
+                <div style={{fontSize:9,color:t.textMuted,textTransform:'uppercase',fontWeight:700,letterSpacing:.4,marginBottom:2}}>Net Profit</div>
+                <div style={{fontSize:15,fontWeight:700,color:tileNP>=0?t.green:t.red}}>{$2(tileNP)}</div>
                 <div style={{fontSize:10,fontWeight:600,color:tileNP>=0?t.green:t.red}}>{tile.em?.margin!=null?((tile.em.margin||0).toFixed(1)+'%'):'—'} margin</div>
               </div>
             </div>
-            {/* More button — pinned at bottom, no layout shift */}
-            <button onClick={()=>toggleTile(tile.id)} style={{width:'100%',padding:'8px 0 7px',background:openTiles.has(tile.id)?t.primaryGhost:'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:700,color:openTiles.has(tile.id)?t.primary:t.textSec,cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s'}}>
-              {openTiles.has(tile.id)?'Less ▴':'More ▾'}
+            {/* More / Less toggle */}
+            <button onClick={()=>toggleTile(tile.id,tile)} style={{width:'100%',padding:'7px 0',background:isOpen?tileColor+'18':'transparent',border:'none',borderTop:'1px solid '+DIV,fontSize:11,fontWeight:700,color:isOpen?tileColor:t.textSec,cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s',letterSpacing:.3}}>
+              {isOpen?'Less ▲':'More ▼'}
             </button>
+            {/* Per-tile detail drawer */}
+            {isOpen&&(
+              <div style={{borderTop:'2px solid '+tileColor,background:t.tableBg}}>
+                {loadingDetail&&<div style={{padding:'18px 14px',color:t.textMuted,fontSize:11,textAlign:'center'}}>Loading...</div>}
+                {!loadingDetail&&dr&&dr.map((row,ri)=>{
+                  const hasSub=row.sub&&row.sub.length>0;
+                  const isExp=expRows.has(row.id);
+                  const isNpLike=row.id==='np'||row.id==='grossProfit';
+                  const valCol=isNpLike?(row.val>=0?t.green:t.red):(row.id==='margin'?(row.val>=15?t.green:row.val>=8?t.orange:t.red):t.text);
+                  const fmtVal=row.val==null||row.val===0&&(row.id==='cogs'||row.id==='rc'||row.id==='af')?'—':row.fmt(row.val);
+                  return<React.Fragment key={ri}>
+                    <div onClick={()=>hasSub&&toggleTileRow(tile.id,row.id)}
+                      style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 13px',borderBottom:'1px solid '+DIV,cursor:hasSub?'pointer':'default',gap:8}}
+                      onMouseEnter={e=>e.currentTarget.style.background=t.tableHover}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <span style={{fontSize:11,color:hasSub?t.text:t.textSec,fontWeight:hasSub?600:400,display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
+                        {hasSub&&<span style={{fontSize:9,color:tileColor}}>{isExp?'▼':'▶'}</span>}
+                        {row.label}
+                      </span>
+                      <span style={{fontSize:12,fontWeight:700,color:valCol,flexShrink:0}}>{fmtVal}</span>
+                    </div>
+                    {isExp&&row.sub.map((s,si)=><div key={si} style={{display:'flex',justifyContent:'space-between',padding:'5px 13px 5px 26px',borderBottom:'1px solid '+DIV,background:tileColor+'08'}}>
+                      <span style={{fontSize:10,color:t.textMuted}}>{s.l}</span>
+                      <span style={{fontSize:11,fontWeight:600,color:t.text}}>{s.fmt(s.v)}</span>
+                    </div>)}
+                  </React.Fragment>;
+                })}
+              </div>
+            )}
           </div>;
         })}
         {!zoneALoading&&zoneATileData.length===0&&<div style={{padding:'32px 24px',color:t.textMuted,fontSize:12}}>No data. Select a preset above and ensure DB is connected.</div>}
       </div>
-
-      {/* Detail panels — side by side columns for all open tiles */}
-      {openTiles.size>0&&(()=>{
-        const openList=zoneATileData.filter(tile=>openTiles.has(tile.id));
-        if(!openList.length)return null;
-        const ROWS=buildDetailRows(openList[0].em,{}).map(r=>r); // get row labels from first tile
-        const allDR=openList.map(tile=>buildDetailRows(tile.em,tile.detail||{}));
-        return<div style={{borderTop:'2px solid '+DIV,background:t.tableBg,overflowX:'auto'}}>
-          {/* Header row — tile labels */}
-          <div style={{display:'flex',borderBottom:'2px solid '+DIV}}>
-            {/* Metric label column header */}
-            <div style={{minWidth:140,flexShrink:0,padding:'9px 14px',fontSize:10,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:.8,borderRight:'1px solid '+DIV}}>Metric</div>
-            {openList.map((tile,ci)=>{
-              const tileIdx=zoneATileData.findIndex(t=>t.id===tile.id);
-              const tileColor=TILE_COLORS[tileIdx%TILE_COLORS.length];
-              return<div key={tile.id} style={{flex:1,minWidth:160,padding:'9px 14px',borderRight:ci<openList.length-1?'1px solid '+DIV:'none',background:tileColor+'10'}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:1}}>
-                  <div style={{width:8,height:8,borderRadius:2,background:tileColor,flexShrink:0}}/>
-                  <span style={{fontSize:12,fontWeight:700,color:t.text}}>{tile.label}</span>
-                </div>
-                <div style={{fontSize:10,color:t.textMuted,marginLeft:14}}>{tile.dateLabel}</div>
-              </div>;
-            })}
-          </div>
-          {/* Data rows */}
-          {ROWS.map((row,ri)=>{
-            const hasSub=row.sub&&row.sub.length>0;
-            const isAnyExp=openList.some(tile=>(tileExpandedRows[tile.id]||new Set()).has(row.id));
-            return<React.Fragment key={ri}>
-              <div style={{display:'flex',borderBottom:'1px solid '+DIV,cursor:hasSub?'pointer':'default'}}
-                onClick={()=>{if(hasSub)openList.forEach(tile=>toggleTileRow(tile.id,row.id))}}
-                onMouseEnter={e=>e.currentTarget.style.background=t.tableHover}
-                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                {/* Metric name */}
-                <div style={{minWidth:140,flexShrink:0,padding:'9px 14px',fontSize:12,fontWeight:500,color:S,whiteSpace:'nowrap',borderRight:'1px solid '+DIV,display:'flex',alignItems:'center',gap:4}}>
-                  {hasSub&&<span style={{fontSize:9,color:t.primary}}>{isAnyExp?'▼':'▶'}</span>}
-                  {row.label}
-                </div>
-                {/* Values per tile */}
-                {allDR.map((dr,ci)=>{
-                  const cell=dr[ri];
-                  const isNpLike=(cell.id==='np'||cell.id==='grossProfit');
-                  const valCol=isNpLike?(cell.val>=0?t.green:t.red):t.text;
-                  return<div key={ci} style={{flex:1,minWidth:160,padding:'9px 14px',textAlign:'right',fontWeight:700,color:valCol,fontSize:13,borderRight:ci<allDR.length-1?'1px solid '+DIV:'none'}}>
-                    {cell.fmt(cell.val)}
-                  </div>;
-                })}
-              </div>
-              {/* Sub-rows — expand across all columns */}
-              {isAnyExp&&row.sub.map((sub,si)=><div key={'s'+si} style={{display:'flex',borderBottom:'1px solid '+DIV,background:t.primaryGhost+'88'}}>
-                <div style={{minWidth:140,flexShrink:0,padding:'7px 14px 7px 30px',fontSize:11,color:t.textMuted,borderRight:'1px solid '+DIV}}>{sub.l}</div>
-                {allDR.map((dr,ci)=>{
-                  const cell=dr[ri];
-                  const sv=cell.sub?.[si];
-                  return<div key={ci} style={{flex:1,minWidth:160,padding:'7px 14px',textAlign:'right',fontSize:11,fontWeight:600,color:t.text,borderRight:ci<allDR.length-1?'1px solid '+DIV:'none'}}>
-                    {sv?sv.fmt(sv.v):'—'}
-                  </div>;
-                })}
-              </div>)}
-            </React.Fragment>;
-          })}
-        </div>;
-      })()}
 
     </div>
 
@@ -2769,7 +2756,7 @@ export default function App(){
     return()=>{cancelled=true};
   },[fetchTrigger]);
 
-  // ═══════════ ZONE A FETCH — exec/summary + exec/detail per tile ═══════════
+  // ═══════════ ZONE A FETCH — exec/summary only (detail is lazy on More click) ═══════════
   const zoneAParamsRef=useRef({zoneAPreset,zoneAStore});
   zoneAParamsRef.current={zoneAPreset,zoneAStore};
   useEffect(()=>{
@@ -2780,29 +2767,18 @@ export default function App(){
     if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
-    (async()=>{
-      try{
-        // Fetch tiles sequentially to avoid overloading DB with 5+ parallel queries
-        const tiles=[];
-        for(const p of periods){
-          try{
-            const [emRaw,detailRaw]=await Promise.all([
-              api('exec/summary',{start:p.start,end:p.end,store:_store==='All'?undefined:_store}),
-              api('exec/detail',{start:p.start,end:p.end,store:_store==='All'?undefined:_store}).catch(()=>({})),
-            ]);
-            const emData=emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM;
-            tiles.push({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emData,detail:detailRaw||{}});
-            // Update UI after each tile so user sees progress
-            if(!cancelled)setZoneATileData([...tiles]);
-          }catch(te){
-            tiles.push({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:EMPTY_EM,detail:{}});
-          }
-          if(cancelled)return;
-        }
-        if(!cancelled)setZoneATileData(tiles);
-      }catch(e){console.error('Zone A fetch error:',e);}
-      if(!cancelled)setZoneALoading(false);
-    })();
+    setOpenTiles(new Set()); // close all drawers on refresh
+    // Fetch ALL summaries in parallel — summary is light (1 query each)
+    const storeParam=_store==='All'?undefined:_store;
+    Promise.allSettled(periods.map(p=>
+      api('exec/summary',{start:p.start,end:p.end,store:storeParam})
+        .then(emRaw=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM,detail:null}))
+        .catch(()=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:EMPTY_EM,detail:null}))
+    )).then(results=>{
+      if(cancelled)return;
+      setZoneATileData(results.map(r=>r.status==='fulfilled'?r.value:periods[0]));
+      setZoneALoading(false);
+    });
     return()=>{cancelled=true};
   },[zoneAPreset,zoneAStore,live,dbConnecting]);
 
