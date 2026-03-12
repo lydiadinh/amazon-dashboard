@@ -2666,8 +2666,10 @@ export default function App(){
   const[live,setLive]=useState(false);
   const[dbRange,setDbRange]=useState(null);const[dbConnecting,setDbConnecting]=useState(true);
   const[mobileFilters,setMobileFilters]=useState(false);
-  const defaultEnd=new Date().toISOString().slice(0,10);
-  const defaultStart=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  // defaultEnd = latest DB date (set after dbRange loads). Init with VN time (UTC+7) as placeholder.
+  const vnToday=new Date(Date.now()+7*3600000).toISOString().slice(0,10);
+  const defaultEnd=vnToday;
+  const defaultStart=new Date(Date.now()+7*3600000-30*86400000).toISOString().slice(0,10);
   const[sd,setSd]=useState(defaultStart);const[ed,setEd]=useState(defaultEnd);
   const[activePeriod,setActivePeriod]=useState(null);
   const[selectedStores,setSelectedStores]=useState(()=>new Set());
@@ -2676,9 +2678,9 @@ export default function App(){
   const storeStr=Array.from(selectedStores).join(',') || 'All';
   const store=storeStr;
   const setStore=str=>setSelectedStores(str==='All'||!str?new Set():new Set(str.split(',').map(s=>s.trim()).filter(Boolean)));
-  const[planYear,setPlanYear]=useState(String(new Date().getFullYear()));
-  const planYearOpts=useMemo(()=>{const c=new Date().getFullYear();return[String(c-1),String(c),String(c+1)]},[]);
-  const clearDates=()=>{if(dbRange?.defaultStart)setSd(dbRange.defaultStart);else setSd(defaultStart);setEd(defaultEnd);setActivePeriod(null)};
+  const[planYear,setPlanYear]=useState(String(new Date(Date.now()+7*3600000).getFullYear()));
+  const planYearOpts=useMemo(()=>{const c=dbRange?.maxDate?parseInt(dbRange.maxDate.slice(0,4)):new Date(Date.now()+7*3600000).getFullYear();return[String(c-1),String(c),String(c+1)]},[dbRange]);
+  const clearDates=()=>{setSd(dbRange?.defaultStart||defaultStart);setEd(dbRange?.defaultEnd||defaultEnd);setActivePeriod(null)};
 
   // ═══════════ LIVE DATA STATE ═══════════
   const[em,setEm]=useState(EMPTY_EM);
@@ -2761,9 +2763,10 @@ export default function App(){
             setDbRange(dr);
             // End date = always today, start = 30 days ago (or dr.defaultStart)
             if(dr.defaultStart){
-              console.log("Setting dates: start=",dr.defaultStart,"end=today (DB min:",dr.minDate,"max:",dr.maxDate,")");
+              console.log("DB date range: min=",dr.minDate,"max=",dr.maxDate,"defaultEnd=",dr.defaultEnd);
               setSd(dr.defaultStart);
-              // ed stays as today (defaultEnd)
+              // ed = latest date in DB, not server clock
+              if(dr.defaultEnd) setEd(dr.defaultEnd);
             }
           }
           api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
@@ -2846,7 +2849,7 @@ export default function App(){
     if(!live||dbConnecting)return;
     let cancelled=false;
     const{zoneAPreset:_preset,storeStr:_store}=zoneAParamsRef.current;
-    const periods=getZoneAPeriods(_preset, defaultEnd);
+    const periods=getZoneAPeriods(_preset, dbRange?.today||dbRange?.maxDate||defaultEnd);
     if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
@@ -2968,7 +2971,7 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:10}}>{mob&&<button onClick={()=>setMobileFilters(!mobileFilters)} style={{background:t.primaryLight,border:"1px solid "+t.primary+"33",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontSize:12,color:t.primary,fontWeight:700}}>☰</button>}<span style={{fontSize:mob?17:20,fontWeight:800,color:t.text,letterSpacing:-.4}}>{cn?.l}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
-            <span style={{fontSize:9.5,fontWeight:700,padding:"4px 12px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"● Live DB":"○ No DB"}</span><span style={{fontSize:9,color:t.textMuted,marginLeft:4,fontWeight:600}}>v4.4</span>
+            <span style={{fontSize:9.5,fontWeight:700,padding:"4px 12px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"● Live DB":"○ No DB"}</span>{live&&dbRange?.maxDate&&<span style={{fontSize:9,color:t.textMuted,marginLeft:4,fontWeight:600,background:t.tableBg,padding:"3px 8px",borderRadius:8,border:"1px solid "+t.cardBorder}} title="Latest date available in database">📅 Data as of {dbRange.maxDate}</span>}<span style={{fontSize:9,color:t.textMuted,marginLeft:4,fontWeight:600}}>v4.5</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:10,padding:"6px 12px",cursor:"pointer",fontSize:13,color:t.textSec,transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background=t.card}>{isDark?"Light":"Dark"}</button>
           </div>
         </div>
