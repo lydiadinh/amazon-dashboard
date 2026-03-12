@@ -2843,15 +2843,16 @@ export default function App(){
   },[fetchTrigger]);
 
   // ═══════════ ZONE A FETCH — exec/summary only (detail is lazy on More click) ═══════════
-  const zoneARefDate=dbRange?.today||dbRange?.maxDate||defaultEnd;
-  const zoneAParamsRef=useRef({zoneAPreset,storeStr,zoneARefDate});
-  zoneAParamsRef.current={zoneAPreset,storeStr,zoneARefDate};
+  const zoneAParamsRef=useRef({zoneAPreset,storeStr});
+  zoneAParamsRef.current={zoneAPreset,storeStr};
   useEffect(()=>{
     if(!live||dbConnecting)return;
+    // Compute refDate directly here — not from ref — to avoid stale closure
+    const refDate=dbRange?.today||dbRange?.maxDate;
+    if(!refDate)return; // dbRange not loaded yet, will re-run when it loads
     let cancelled=false;
-    const{zoneAPreset:_preset,storeStr:_store,zoneARefDate:_refDate}=zoneAParamsRef.current;
-    if(!dbRange)return; // wait for dbRange to load before computing periods
-    const periods=getZoneAPeriods(_preset, _refDate);
+    const{zoneAPreset:_preset,storeStr:_store}=zoneAParamsRef.current;
+    const periods=getZoneAPeriods(_preset, refDate);
     if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
