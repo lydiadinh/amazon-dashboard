@@ -1964,13 +1964,13 @@ const AI_FONT="'Plus Jakarta Sans',system-ui,-apple-system,sans-serif";
 // Load Plus Jakarta Sans font globally
 if(typeof document!=='undefined'&&!document.getElementById('pjs-font')){const l=document.createElement('link');l.id='pjs-font';l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';document.head.appendChild(l);const s=document.createElement('style');s.textContent=`*{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif!important}code,pre,.monospace,[style*="monospace"]{font-family:'JetBrains Mono','SF Mono','Cascadia Code',monospace!important}body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}`;document.head.appendChild(s);}
 const AI_HINTS={
-  exec:["Compare this month vs last month","Which shop should cut ad spend?","What are the biggest risks right now?"],
-  inv:["Explain Sell-Through & Days of Supply","How should I handle inventory over 90 days?","Is the storage fee a concern?"],
-  plan:["Are we on track with our targets?","Which ASIN is most off-plan?","What adjustments are needed for Q2?"],
-  prod:["Which ASINs should pause ads?","What do the top ASINs have in common?","What is a healthy ACOS benchmark?"],
-  shops:["Which shop needs immediate action?","Is revenue too concentrated in one shop?","How to improve underperforming shops?"],
-  team:["Which seller needs coaching?","Compare top vs bottom seller performance","How should ASINs be reassigned?"],
-  daily:["Any anomalies today?","What is the day-of-week pattern?","Summarize the last 7-day trend"],
+  exec:["So sánh Jan vs Feb","Shop nào cần cắt quảng cáo?","Rủi ro lớn nhất hiện tại?"],
+  inv:["Explain Sell-Through & Days of Supply","Nên xử lý hàng tồn >90 ngày như thế nào?","Phí storage có đáng lo không?"],
+  plan:["Mình có đang đúng target không?","ASIN nào lệch plan nhiều nhất?","Q2 cần điều chỉnh gì?"],
+  prod:["ASIN nào nên tắt ads?","Top ASINs có gì chung?","ACOS bao nhiêu là healthy?"],
+  shops:["Shop nào cần action gấp?","Revenue tập trung quá nhiều vào 1 shop?","Cải thiện shop lỗ bằng cách nào?"],
+  team:["Seller nào cần coaching?","So sánh hiệu suất top vs bottom","Nên phân lại ASIN thế nào?"],
+  daily:["Có anomaly gì hôm nay không?","Pattern ngày trong tuần","Trend 7 ngày gần nhất"],
 };
 const PG_LABEL={exec:"Executive Overview",inv:"Inventory",plan:"ASIN Plan",prod:"Product Performance",shops:"Shop Performance",team:"Team Performance",daily:"Daily Ops"};
 
@@ -2554,170 +2554,98 @@ function AnalyticsPage({t,fDaily,fShopData,fSeller,fAsin,em,monthPlanData,sd,ed}
 }
 
 function AiChat({t,pg,contextData}){
-  const STORAGE_KEY='ai_chat_history_v1';
-  const MAX_HISTORY_PER_PAGE=60;
-
-  // Load persisted history from localStorage
-  const loadHistory=()=>{try{const raw=localStorage.getItem(STORAGE_KEY);return raw?JSON.parse(raw):{}}catch(e){return{}}};
-  const saveHistory=(allHistory)=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(allHistory))}catch(e){}};
-
   const[open,setOpen]=useState(false);
-  const[msgs,setMsgs]=useState(()=>loadHistory()[pg]||[]);
-  const[input,setInput]=useState('');
+  const[msgs,setMsgs]=useState([]);
+  const[input,setInput]=useState("");
   const[loading,setLoading]=useState(false);
-  const[image,setImage]=useState(null);   // {dataUrl, mimeType, name}
-  const[showClear,setShowClear]=useState(false);
   const endRef=useRef(null);
   const inputRef=useRef(null);
-  const fileRef=useRef(null);
+  const prevPg=useRef(pg);
   const mob=window.innerWidth<768;
 
-  // Sync msgs to localStorage whenever they change
-  useEffect(()=>{
-    const all=loadHistory();
-    all[pg]=(msgs||[]).slice(-MAX_HISTORY_PER_PAGE);
-    saveHistory(all);
-  },[msgs,pg]);
-
-  // Load correct page history when page changes
-  useEffect(()=>{
-    setMsgs(loadHistory()[pg]||[]);
-    setImage(null);
-  },[pg]);
-
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'})},[msgs,loading]);
+  // Reset chat when page changes
+  useEffect(()=>{if(prevPg.current!==pg){setMsgs([]);prevPg.current=pg;}},[pg]);
+  // Auto scroll
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs,loading]);
+  // Focus input on open
   useEffect(()=>{if(open)setTimeout(()=>inputRef.current?.focus(),100)},[open]);
 
-  // Image picker
-  const pickImage=()=>fileRef.current?.click();
-  const onFileChange=(e)=>{
-    const file=e.target.files?.[0];
-    if(!file)return;
-    const allowed=['image/jpeg','image/png','image/gif','image/webp'];
-    if(!allowed.includes(file.type)){alert('Only JPG, PNG, GIF, WEBP supported');return;}
-    if(file.size>4*1024*1024){alert('Max image size is 4MB');return;}
-    const reader=new FileReader();
-    reader.onload=(ev)=>setImage({dataUrl:ev.target.result,mimeType:file.type,name:file.name});
-    reader.readAsDataURL(file);
-    e.target.value='';
-  };
-
   const send=async(text)=>{
-    const q=text||input.trim();
-    if((!q&&!image)||loading)return;
-    setInput('');
-    const userMsg={role:'user',text:q||(image?'[Image attached]':''),image:image?.dataUrl||null,imageType:image?.mimeType||null};
-    setMsgs(prev=>[...prev,userMsg]);
-    const imgSnap=image;
-    setImage(null);
+    const q=text||input.trim();if(!q||loading)return;
+    setInput("");
+    setMsgs(prev=>[...prev,{role:"user",text:q}]);
     setLoading(true);
     const ctx=buildCtx(pg,contextData);
     try{
-      const body={context:ctx,question:q||(imgSnap?'Analyze this image':''),history:msgs.slice(-8)};
-      if(imgSnap){body.image=imgSnap.dataUrl;body.imageType=imgSnap.mimeType;}
-      const data=await apiPost('ai/insight',body);
-      setMsgs(prev=>[...prev,{role:'ai',text:data.insight||'Unable to analyze.'}]);
+      const data=await apiPost("ai/insight",{context:ctx,question:q,history:msgs.slice(-6)});
+      setMsgs(prev=>[...prev,{role:"ai",text:data.insight||"Không thể phân tích."}]);
     }catch(e){
-      setMsgs(prev=>[...prev,{role:'ai',text:`AI not connected (add ANTHROPIC_API_KEY to Railway).\n\nError: ${e.message}`}]);
+      setMsgs(prev=>[...prev,{role:"ai",text:`Chưa kết nối AI (cần ANTHROPIC_API_KEY trong Railway).\n\nLỗi: ${e.message}`}]);
     }
     setLoading(false);
   };
 
-  const clearHistory=()=>{
-    setMsgs([]);
-    const all=loadHistory();delete all[pg];saveHistory(all);
-    setShowClear(false);
-  };
-
-  const renderMd=(text)=>text.split('\n').map((line,i)=>{
-    if(line.startsWith('### '))return<div key={i} style={{fontSize:13.5,fontWeight:700,color:t.text,marginTop:10,marginBottom:3}}>{line.slice(4)}</div>;
-    if(line.startsWith('## '))return<div key={i} style={{fontSize:14.5,fontWeight:700,color:t.primary,marginTop:12,marginBottom:4}}>{line.slice(3)}</div>;
-    if(line.startsWith('# '))return<div key={i} style={{fontSize:15.5,fontWeight:800,color:t.text,marginTop:14,marginBottom:6}}>{line.slice(2)}</div>;
-    if(line.match(/^[•\-\*]\s/))return<div key={i} style={{paddingLeft:14,position:'relative',marginBottom:3}}><span style={{position:'absolute',left:2}}>•</span>{line.replace(/^[•\-\*]\s/,'')}</div>;
-    if(line.trim()==='')return<div key={i} style={{height:5}}/>;
+  const renderMd=(text)=>text.split("\n").map((line,i)=>{
+    if(line.startsWith("### "))return<div key={i} style={{fontSize:13.5,fontWeight:700,color:t.text,marginTop:10,marginBottom:3}}>{line.slice(4)}</div>;
+    if(line.startsWith("## "))return<div key={i} style={{fontSize:14.5,fontWeight:700,color:t.primary,marginTop:12,marginBottom:4}}>{line.slice(3)}</div>;
+    if(line.startsWith("# "))return<div key={i} style={{fontSize:15.5,fontWeight:800,color:t.text,marginTop:14,marginBottom:6}}>{line.slice(2)}</div>;
+    if(line.match(/^[•\-\*]\s/))return<div key={i} style={{paddingLeft:14,position:"relative",marginBottom:3}}><span style={{position:"absolute",left:2}}>•</span>{line.replace(/^[•\-\*]\s/,"")}</div>;
+    if(line.trim()==="")return<div key={i} style={{height:5}}/>;
     const parts=line.split(/\*\*(.*?)\*\*/g);
     if(parts.length>1)return<div key={i} style={{marginBottom:2}}>{parts.map((p,j)=>j%2===1?<strong key={j} style={{fontWeight:700,color:t.text}}>{p}</strong>:<span key={j}>{p}</span>)}</div>;
     return<div key={i} style={{marginBottom:2}}>{line}</div>;
   });
 
   const hints=AI_HINTS[pg]||AI_HINTS.exec;
-  const hasHistory=msgs.length>0;
 
-  // Floating button with unread badge if has history
-  if(!open)return<button onClick={()=>setOpen(true)} style={{position:'fixed',bottom:mob?60:20,right:16,zIndex:999,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,color:'#fff',border:'none',borderRadius:16,padding:'12px 20px',cursor:'pointer',boxShadow:'0 4px 20px rgba(59,74,138,.35)',fontSize:13.5,fontWeight:600,fontFamily:AI_FONT,display:'flex',alignItems:'center',gap:6,transition:'transform .2s'}} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform=''}>
-    AI Chat{hasHistory&&<span style={{background:'rgba(255,255,255,.25)',borderRadius:8,padding:'1px 7px',fontSize:11}}>{msgs.length}</span>}
-  </button>;
+  // Floating button
+  if(!open)return<button onClick={()=>setOpen(true)} style={{position:"fixed",bottom:mob?60:20,right:16,zIndex:999,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,color:"#fff",border:"none",borderRadius:16,padding:"12px 20px",cursor:"pointer",boxShadow:"0 4px 20px rgba(59,74,138,.35)",fontSize:13.5,fontWeight:600,fontFamily:AI_FONT,display:"flex",alignItems:"center",gap:6,transition:"transform .2s"}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform=""}>AI Chat</button>;
 
-  const W=mob?'100%':'420px';
-  const H=mob?'100%':'70vh';
+  const W=mob?"100%":"420px";
+  const H=mob?"100%":"70vh";
 
   return ReactDOM.createPortal(<>
-    <div onClick={()=>setOpen(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.3)',zIndex:9998}}/>
-    <div style={{position:'fixed',bottom:mob?0:20,right:mob?0:16,width:W,height:H,maxHeight:mob?'100vh':'70vh',zIndex:9999,background:t.card,borderRadius:mob?0:16,border:mob?'none':'1px solid '+t.cardBorder,boxShadow:'0 12px 40px '+t.shadow,display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:AI_FONT}}>
+    {/* Backdrop */}
+    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",zIndex:9998}}/>
+    {/* Chat panel */}
+    <div style={{position:"fixed",bottom:mob?0:20,right:mob?0:16,width:W,height:H,maxHeight:mob?"100vh":"70vh",zIndex:9999,background:t.card,borderRadius:mob?0:16,border:mob?"none":"1px solid "+t.cardBorder,boxShadow:"0 12px 40px "+t.shadow,display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:AI_FONT}}>
 
       {/* Header */}
-      <div style={{padding:'14px 16px',background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,flexShrink:0}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:AI_FONT}}>AI Assistant</div><div style={{fontSize:11,color:'rgba(255,255,255,.7)',marginTop:2,fontFamily:AI_FONT}}>Viewing: {PG_LABEL[pg]||pg}</div></div>
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            {hasHistory&&<button onClick={()=>setShowClear(v=>!v)} title="Clear history" style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:12}}>✕</button>}
-            <button onClick={()=>setOpen(false)} style={{background:'rgba(255,255,255,.15)',border:'none',borderRadius:8,color:'#fff',cursor:'pointer',padding:'6px 10px',fontSize:13}}>✕</button>
-          </div>
+      <div style={{padding:"14px 16px",background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:15,fontWeight:700,color:"#fff",fontFamily:AI_FONT}}>AI Assistant</div><div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2,fontFamily:AI_FONT}}>Đang xem: {PG_LABEL[pg]||pg}</div></div>
+          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,color:"#fff",cursor:"pointer",padding:"6px 10px",fontSize:13}}>✕</button>
         </div>
-        {showClear&&<div style={{marginTop:10,padding:'8px 12px',background:'rgba(0,0,0,.2)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <span style={{fontSize:12,color:'#fff'}}>Clear all history for this page?</span>
-          <div style={{display:'flex',gap:6}}>
-            <button onClick={clearHistory} style={{background:'#ef4444',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11,fontWeight:600}}>Clear</button>
-            <button onClick={()=>setShowClear(false)} style={{background:'rgba(255,255,255,.2)',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',padding:'4px 10px',fontSize:11}}>Cancel</button>
-          </div>
-        </div>}
       </div>
 
       {/* Messages */}
-      <div style={{flex:1,overflow:'auto',padding:'12px 16px'}}>
-        {msgs.length===0&&!loading&&<div style={{textAlign:'center',padding:'24px 10px'}}>
+      <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
+        {msgs.length===0&&!loading&&<div style={{textAlign:"center",padding:"24px 10px"}}>
           <div style={{fontSize:16,fontWeight:800,color:t.primary,marginBottom:8}}>AI</div>
-          <div style={{fontSize:15,fontWeight:600,color:t.text,marginBottom:4}}>Ask anything about your data!</div>
-          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI will analyze based on data from the {PG_LABEL[pg]||pg} page currently displayed.<br/>You can also attach an image ⊕</div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>{hints.map((h,i)=><button key={i} onClick={()=>send(h)} style={{padding:'10px 14px',borderRadius:10,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.textSec,fontSize:12.5,cursor:'pointer',textAlign:'left',fontFamily:AI_FONT,transition:'all .15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textSec}}>{h}</button>)}</div>
+          <div style={{fontSize:15,fontWeight:600,color:t.text,marginBottom:4}}>Hỏi bất cứ điều gì về data!</div>
+          <div style={{fontSize:12.5,color:t.textMuted,lineHeight:1.6,marginBottom:14}}>AI sẽ phân tích dựa trên data trang {PG_LABEL[pg]||pg} đang hiển thị.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>{hints.map((h,i)=><button key={i} onClick={()=>send(h)} style={{padding:"10px 14px",borderRadius:10,border:"1px solid "+t.inputBorder,background:t.inputBg,color:t.textSec,fontSize:12.5,cursor:"pointer",textAlign:"left",fontFamily:AI_FONT,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=t.primary;e.currentTarget.style.color=t.primary}} onMouseLeave={e=>{e.currentTarget.style.borderColor=t.inputBorder;e.currentTarget.style.color=t.textSec}}>{h}</button>)}</div>
         </div>}
 
-        {msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
-          {m.role==='ai'&&<div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0,marginRight:8,marginTop:2}}>AI</div>}
-          <div style={{maxWidth:'82%',display:'flex',flexDirection:'column',gap:4,alignItems:m.role==='user'?'flex-end':'flex-start'}}>
-            {m.image&&<img src={m.image} alt="attachment" style={{maxWidth:200,maxHeight:160,borderRadius:10,objectFit:'cover',border:'2px solid '+t.cardBorder}}/>}
-            {m.text&&<div style={{padding:'10px 14px',borderRadius:m.role==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',background:m.role==='user'?`linear-gradient(135deg,${t.primary},#5A6BC5)`:t.inputBg,color:m.role==='user'?'#fff':t.textSec,fontSize:13.5,lineHeight:1.7,fontFamily:AI_FONT}}>{m.role==='user'?m.text:renderMd(m.text)}</div>}
-          </div>
+        {msgs.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
+          {m.role==="ai"&&<div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,marginRight:8,marginTop:2,color:"#fff"}}>AI</div>}
+          <div style={{maxWidth:"80%",padding:"10px 14px",borderRadius:m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:m.role==="user"?`linear-gradient(135deg,${t.primary},#5A6BC5)`:t.inputBg,color:m.role==="user"?"#fff":t.textSec,fontSize:13.5,lineHeight:1.7,fontFamily:AI_FONT}}>{m.role==="user"?m.text:renderMd(m.text)}</div>
         </div>)}
 
-        {loading&&<div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-          <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,flexShrink:0}}>AI</div>
-          <div style={{padding:'10px 14px',borderRadius:'14px 14px 14px 4px',background:t.inputBg}}>
-            <div style={{display:'flex',gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:'50%',background:t.textMuted,animation:`bounce .6s ${i*.15}s infinite alternate`}}/>)}</div>
+        {loading&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${t.primary},#5A6BC5)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,color:"#fff"}}>AI</div>
+          <div style={{padding:"10px 14px",borderRadius:"14px 14px 14px 4px",background:t.inputBg}}>
+            <div style={{display:"flex",gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:t.textMuted,animation:`bounce .6s ${i*.15}s infinite alternate`}}/>)}</div>
             <style>{`@keyframes bounce{from{opacity:.3;transform:translateY(0)}to{opacity:1;transform:translateY(-4px)}}`}</style>
           </div>
         </div>}
         <div ref={endRef}/>
       </div>
 
-      {/* Image preview */}
-      {image&&<div style={{padding:'6px 14px',borderTop:'1px solid '+t.divider,flexShrink:0,display:'flex',alignItems:'center',gap:8,background:t.tableBg}}>
-        <img src={image.dataUrl} alt="preview" style={{width:48,height:48,objectFit:'cover',borderRadius:8,border:'1px solid '+t.cardBorder}}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:11.5,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{image.name}</div>
-          <div style={{fontSize:10.5,color:t.textMuted}}>Ready to send</div>
-        </div>
-        <button onClick={()=>setImage(null)} style={{background:'none',border:'none',color:t.textMuted,cursor:'pointer',fontSize:16,padding:4}}>✕</button>
-      </div>}
-
       {/* Input */}
-      <div style={{padding:'10px 14px',borderTop:'1px solid '+t.divider,flexShrink:0,display:'flex',gap:8,alignItems:'center'}}>
-        {/* Hidden file input */}
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{display:'none'}} onChange={onFileChange}/>
-        {/* Attach button */}
-        <button onClick={pickImage} title="Attach image" style={{width:36,height:36,borderRadius:12,border:'1px solid '+t.inputBorder,background:image?t.primaryGhost:t.inputBg,color:image?t.primary:t.textMuted,cursor:'pointer',fontSize:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s'}}>⊕</button>
-        <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder={image?'Add a question about the image... (optional)':'Ask a question...'} style={{flex:1,padding:'11px 14px',borderRadius:12,border:'1px solid '+t.inputBorder,background:t.inputBg,color:t.text,fontSize:13.5,fontFamily:AI_FONT,outline:'none',boxSizing:'border-box'}}/>
-        <button onClick={()=>send()} disabled={loading||(!input.trim()&&!image)} style={{width:36,height:36,borderRadius:12,border:'none',background:(!loading&&(input.trim()||image))?t.primary:t.inputBorder,color:(!loading&&(input.trim()||image))?'#fff':t.textMuted,cursor:(!loading&&(input.trim()||image))?'pointer':'default',fontSize:14,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>➤</button>
+      <div style={{padding:"10px 14px",borderTop:"1px solid "+t.divider,flexShrink:0,display:"flex",gap:8,alignItems:"center"}}>
+        <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}} placeholder="Nhập câu hỏi..." style={{flex:1,padding:"11px 14px",borderRadius:12,border:"1px solid "+t.inputBorder,background:t.inputBg,color:t.text,fontSize:13.5,fontFamily:AI_FONT,outline:"none",boxSizing:"border-box"}}/>
+        <button onClick={()=>send()} disabled={loading||!input.trim()} style={{width:36,height:36,borderRadius:12,border:"none",background:(!loading&&input.trim())?t.primary:t.inputBorder,color:(!loading&&input.trim())?"#fff":t.textMuted,cursor:(!loading&&input.trim())?"pointer":"default",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>➤</button>
       </div>
     </div>
   </>,document.body);
@@ -2838,11 +2766,7 @@ export default function App(){
               // ed stays as today (defaultEnd)
             }
           }
-          api("inventory/snapshot",{store}).then(d=>setInvData(d||{})).catch(()=>{});
-          api("inventory/by-shop",{store}).then(d=>setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))).catch(()=>{});
-          api("inventory/stock-trend",{store}).then(d=>setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))).catch(()=>{});
-          api("inventory/storage-monthly",{store}).then(d=>setInvFeeMonthly(d||[])).catch(()=>{});
-          api("inventory/by-asin",{store}).then(d=>setInvAsin(d||[])).catch(()=>{});
+          // Inventory data is lazy-loaded when user navigates to Inventory tab
         }
       }catch(e){console.error("INIT ERROR:",e)}
       setDbConnecting(false);
@@ -2879,37 +2803,63 @@ export default function App(){
       if(cancelled)return;
       setEm(summary&&summary.sales!=null?summary:EMPTY_EM);
       setFDaily(arr(daily).map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+"T12:00:00");const label=isNaN(dt)?ds:MS[dt.getMonth()]+" "+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0,netProfit:parseFloat(r.netProfit)||0,units:parseInt(r.units)||0,advCost:parseFloat(r.advCost)||0,sessions:parseInt(r.sessions)||0}}));
-      // Batch 2: secondary data + prev period (non-blocking)
-      const[prev,asins,shops,team]=await Promise.all([
+      // Batch 2: exec secondary data — prev period + detail + shop-extended + LY daily
+      const[prev]=await Promise.all([
         api("exec/summary",{...p,start:ps.toISOString().slice(0,10),end:pe.toISOString().slice(0,10)}).catch(()=>null),
-        api("product/asins",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
-        api("shops",{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).catch(()=>[]),
-        api("team",{start:_sd,end:_ed,seller:_sl,store:_st,asin:_af}).catch(e=>{setFilterError(prev=>(prev?prev+' | ':'')+'Team: '+e.message);return[];}),
       ]);
       if(cancelled)return;
       setPrevEm(prev&&prev.sales?prev:null);
-      // Fetch SPLY (same period last year) — non-blocking
       const lyS=new Date(_sd+'T00:00:00');lyS.setFullYear(lyS.getFullYear()-1);
       const lyE=new Date(_ed+'T00:00:00');lyE.setFullYear(lyE.getFullYear()-1);
       const lyStart=lyS.toISOString().slice(0,10),lyEnd=lyE.toISOString().slice(0,10);
       api('exec/detail',{start:_sd,end:_ed,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&d)setExecDetail(d)}).catch(()=>{});
       api('exec/shop-extended',{start:_sd,end:_ed,store:_st,seller:_sl}).then(d=>{if(!cancelled&&Array.isArray(d))setShopExt(d)}).catch(()=>{});
       api('exec/daily',{start:lyStart,end:lyEnd,store:_st,seller:_sl,asin:_af}).then(d=>{if(!cancelled&&Array.isArray(d))setDailyLY(d.map(r=>{const ds=String(r.date).slice(0,10);const dt=new Date(ds+'T12:00:00');const label=isNaN(dt)?ds:MS[dt.getMonth()]+' '+dt.getDate();return{date:r.date,label,revenue:parseFloat(r.revenue)||0}}))}).catch(()=>{});
-      setFAsin(arr(asins).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})));
-      setFShopData(arr(shops).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,gp:parseFloat(r.grossProfit)||parseFloat(r.netProfit)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0,u:parseInt(r.units)||0,ad:parseFloat(r.ads)||0,sv:parseFloat(r.stockValue)||0,gpP:parseFloat(r.gpPlan)||0,rvP:parseFloat(r.rvPlan)||0,adP:parseFloat(r.adPlan)||0,unP:parseFloat(r.unPlan)||0})));
-      setFSeller(arr(team).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})));
+      // Trigger lazy-load for current page data (product/asins, shops, team, inventory)
+      setPageDataTrigger(n=>n+1);
     }catch(e){console.error("Fetch error:",e)}
-    // Re-fetch inventory when store changes
-    if(!cancelled){
-      api("inventory/snapshot",{store:_st}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
-      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop((d||[]).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
-      api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend((d||[]).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
-      api("inventory/storage-monthly",{store:_st}).then(d=>{if(!cancelled)setInvFeeMonthly(d||[])}).catch(()=>{});
-      api("inventory/by-asin",{store:_st,seller:_sl}).then(d=>{if(!cancelled)setInvAsin(d||[])}).catch(()=>{});
-    }
     if(!cancelled)setLoading(false);})();
     return()=>{cancelled=true};
   },[fetchTrigger]);
+
+  // ═══════════ LAZY PAGE DATA — only load when user is on that page ═══════════
+  // pageDataTrigger increments when: (a) user navigates to a page, (b) filters change
+  const[pageDataTrigger,setPageDataTrigger]=useState(0);
+  const pageDataRef=useRef({pg,sd,ed,store,seller,asinF});
+  pageDataRef.current={pg,sd,ed,store,seller,asinF};
+
+  // Fire pageDataTrigger when pg changes (tab switch) or filters change
+  useEffect(()=>{
+    if(!live||dbConnecting)return;
+    setPageDataTrigger(n=>n+1);
+  },[pg,live,dbConnecting]);
+
+  // The actual lazy fetch — reads current pg from ref
+  useEffect(()=>{
+    if(!live||dbConnecting||pageDataTrigger===0)return;
+    const{pg:_pg,sd:_sd,ed:_ed,store:_st,seller:_sl,asinF:_af}=pageDataRef.current;
+    const p={start:_sd,end:_ed,store:_st,seller:_sl,asin:_af};
+    let cancelled=false;
+    const arr=v=>Array.isArray(v)?v:[];
+
+    if(_pg==='prod'||_pg==='exec'){
+      api("product/asins",p).then(d=>{if(!cancelled)setFAsin(arr(d).map(r=>({a:r.asin,b:r.shop||r.brand||"",st:r.shop||r.brand||"",sl:r.seller||"",r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,cr:Math.round((parseFloat(r.cr)||0)*100)/100,ac:Math.round((parseFloat(r.acos)||0)*100)/100,ro:parseFloat(r.acos)>0?(100/parseFloat(r.acos)):0})))}).catch(()=>{});
+    }
+    if(_pg==='shops'||_pg==='exec'){
+      api("shops",p).then(d=>{if(!cancelled)setFShopData(arr(d).map(r=>({s:r.shop,r:parseFloat(r.revenue)||0,gp:parseFloat(r.grossProfit)||parseFloat(r.netProfit)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,f:parseInt(r.fbaStock)||0,o:parseInt(r.orders)||0,u:parseInt(r.units)||0,ad:parseFloat(r.ads)||0,sv:parseFloat(r.stockValue)||0,gpP:parseFloat(r.gpPlan)||0,rvP:parseFloat(r.rvPlan)||0,adP:parseFloat(r.adPlan)||0,unP:parseFloat(r.unPlan)||0})))}).catch(()=>{});
+    }
+    if(_pg==='team'){
+      api("team",p).then(d=>{if(!cancelled)setFSeller(arr(d).map(r=>({sl:r.seller,r:parseFloat(r.revenue)||0,n:parseFloat(r.netProfit)||0,m:parseFloat(r.margin)||0,u:parseInt(r.units)||0,as:parseInt(r.asinCount)||0})))}).catch(()=>{});
+    }
+    if(_pg==='inv'){
+      api("inventory/snapshot",{store:_st}).then(d=>{if(!cancelled)setInvData(d||{})}).catch(()=>{});
+      api("inventory/by-shop",{store:_st}).then(d=>{if(!cancelled)setInvShop(arr(d).map(r=>({s:r.shop,fba:r.fbaStock||0,avail:r.available||0,inb:r.inbound||0,res:r.reserved||0,crit:r.criticalSkus||0,st:r.sellThrough||0,doh:r.daysOfSupply||0})))}).catch(()=>{});
+      api("inventory/stock-trend",{store:_st}).then(d=>{if(!cancelled)setInvTrend(arr(d).map(r=>{const dt=new Date(r.date);return{d:MS[dt.getMonth()]+" "+dt.getDate(),v:parseInt(r.available)||0,fba:parseInt(r.fbaStock)||0}}))}).catch(()=>{});
+      api("inventory/storage-monthly",{store:_st}).then(d=>{if(!cancelled)setInvFeeMonthly(d||[])}).catch(()=>{});
+      api("inventory/by-asin",{store:_st,seller:_sl}).then(d=>{if(!cancelled)setInvAsin(d||[])}).catch(()=>{});
+    }
+    return()=>{cancelled=true};
+  },[pageDataTrigger]);
 
   // ═══════════ ZONE A FETCH — exec/summary only (detail is lazy on More click) ═══════════
   const zoneAParamsRef=useRef({zoneAPreset,storeStr});
