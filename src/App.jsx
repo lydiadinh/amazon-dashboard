@@ -2842,14 +2842,26 @@ export default function App(){
   },[fetchTrigger]);
 
   // ═══════════ ZONE A FETCH — triggered by zoneARefDate (set after dbRange loads) ═══════════
+  // Zone A: use trigger counter like Zone B — avoids React closure/timing issues
+  const[zoneATrigger,setZoneATrigger]=useState(0);
+  const zoneAFetchRef=useRef({preset:zoneAPreset,store:storeStr,refDate:null});
+  zoneAFetchRef.current={preset:zoneAPreset,store:storeStr,refDate:zoneARefDate};
+  // Re-trigger when preset or store changes (after initial load)
   useEffect(()=>{
-    if(!live||!zoneARefDate)return; // wait until dbRange has loaded and set refDate
+    if(!live||!zoneARefDate)return;
+    setZoneATrigger(n=>n+1);
+  },[zoneAPreset,storeStr,live,zoneARefDate]);
+  // Actual fetch — reads from ref so always has latest values
+  useEffect(()=>{
+    if(zoneATrigger===0)return;
+    const{preset,store:_store,refDate}=zoneAFetchRef.current;
+    if(!refDate)return;
     let cancelled=false;
-    const periods=getZoneAPeriods(zoneAPreset, zoneARefDate);
+    const periods=getZoneAPeriods(preset,refDate);
     if(!periods.length)return;
     setZoneALoading(true);
     setZoneATileData([]);
-    const storeParam=storeStr==='All'?undefined:storeStr;
+    const storeParam=_store==='All'?undefined:_store;
     Promise.allSettled(periods.map(p=>
       api('exec/summary',{start:p.start,end:p.end,store:storeParam})
         .then(emRaw=>({id:p.id,label:p.label,dateLabel:p.dateLabel,start:p.start,end:p.end,em:emRaw&&emRaw.sales!=null?emRaw:EMPTY_EM,detail:null}))
@@ -2860,7 +2872,7 @@ export default function App(){
       setZoneALoading(false);
     });
     return()=>{cancelled=true};
-  },[zoneAPreset,storeStr,live,zoneARefDate]);
+  },[zoneATrigger]);
 
   // ═══════════ FETCH PLAN DATA (debounced) ═══════════
   const [planTrigger,setPlanTrigger]=useState(0);
