@@ -1886,7 +1886,7 @@ function PlanPage({t,planKpi,monthPlanData,asinPlanBkData,seller,store,asinF,onA
 }
 
 /* ═══════════ PRODUCT ═══════════ */
-function ProdPage({t,fAsin,fDaily,onAsinClick,sd,ed}){
+function ProdPage({t,isDark,fAsin,fDaily,onAsinClick,sd,ed}){
   const[selAsin,setSelAsin]=useState(null);
   const[drillData,setDrillData]=useState([]);
   const[drillLoading,setDrillLoading]=useState(false);
@@ -1992,28 +1992,80 @@ function ProdPage({t,fAsin,fDaily,onAsinClick,sd,ed}){
                 const hb=healthBadge(r.cr,r.bb,r.m);
                 const isSel=selAsin?.a===r.a;
                 const bw=Math.round(r.ses/maxSes*42);
-                return<tr key={i} onClick={()=>isSel?closeDrill():selectAsin(r)}
-                  onMouseEnter={e=>e.currentTarget.style.background=isSel?t.primaryGhost:t.tableHover}
-                  onMouseLeave={e=>e.currentTarget.style.background=isSel?t.primaryGhost:'transparent'}
-                  style={{cursor:'pointer',background:isSel?t.primaryGhost:'transparent',transition:'background .1s'}}>
-                  <td style={{...TD,fontWeight:700,color:t.primary}} onClick={e=>e.stopPropagation()}><AsinLink asin={r.a} onClick={()=>isSel?closeDrill():selectAsin(r)} t={t}/></td>
-                  <td style={{...TD,color:t.textSec,fontSize:12}}>{r.b}</td>
-                  <td style={{...TD,color:t.textSec,fontSize:12}}>{r.sl||'—'}</td>
-                  <td style={{...TD,textAlign:'right'}}>{$(r.r)}</td>
-                  <td style={{...TD,textAlign:'right',fontWeight:700,color:r.n>=0?t.green:t.red}}>{$(r.n)}</td>
-                  <td style={{...TD,textAlign:'right',color:mC(r.m,t)}}>{r.m.toFixed(1)}%</td>
-                  <td style={{...TD,textAlign:'right'}}>{N(r.u)}</td>
-                  <td style={{...TD,textAlign:'right',color:r.ac<30?t.green:r.ac<50?t.orange:t.red}}>{r.ac.toFixed(1)}%</td>
-                  <td style={{...TD,textAlign:'right'}}>
+                return<React.Fragment key={i}>
+                <tr onClick={()=>isSel?closeDrill():selectAsin(r)}
+                  onMouseEnter={e=>e.currentTarget.style.background=isSel?'transparent':t.tableHover}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                  style={{cursor:'pointer',background:'transparent',transition:'background .1s'}}>
+                  <td style={{...TD,fontWeight:700,color:t.primary,borderBottom:isSel?'none':TD.borderBottom}} onClick={e=>e.stopPropagation()}><AsinLink asin={r.a} onClick={()=>isSel?closeDrill():selectAsin(r)} t={t}/></td>
+                  <td style={{...TD,color:t.textSec,fontSize:12,borderBottom:isSel?'none':TD.borderBottom}}>{r.b}</td>
+                  <td style={{...TD,color:t.textSec,fontSize:12,borderBottom:isSel?'none':TD.borderBottom}}>{r.sl||'—'}</td>
+                  <td style={{...TD,textAlign:'right',borderBottom:isSel?'none':TD.borderBottom}}>{$(r.r)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700,color:r.n>=0?t.green:t.red,borderBottom:isSel?'none':TD.borderBottom}}>{$(r.n)}</td>
+                  <td style={{...TD,textAlign:'right',color:mC(r.m,t),borderBottom:isSel?'none':TD.borderBottom}}>{r.m.toFixed(1)}%</td>
+                  <td style={{...TD,textAlign:'right',borderBottom:isSel?'none':TD.borderBottom}}>{N(r.u)}</td>
+                  <td style={{...TD,textAlign:'right',color:r.ac<30?t.green:r.ac<50?t.orange:t.red,borderBottom:isSel?'none':TD.borderBottom}}>{r.ac.toFixed(1)}%</td>
+                  <td style={{...TD,textAlign:'right',borderBottom:isSel?'none':TD.borderBottom}}>
                     <span style={{display:'inline-block',width:bw,height:3,background:'#185FA5',borderRadius:2,opacity:.45,verticalAlign:'middle',marginRight:5}}/>
                     {N(r.ses)}
                   </td>
-                  <td style={{...TD,textAlign:'right',fontWeight:600,color:r.cr>=8?t.green:r.cr>=4?t.orange:t.red}}>{r.cr.toFixed(2)}%</td>
-                  <td style={{...TD,textAlign:'right',color:r.bb>=90?t.text:r.bb>=80?t.orange:r.bb>0?t.red:t.textMuted}}>{r.bb>0?r.bb.toFixed(1)+'%':'—'}</td>
-                  <td style={{...TD,textAlign:'center'}}>
+                  <td style={{...TD,textAlign:'right',fontWeight:600,color:r.cr>=8?t.green:r.cr>=4?t.orange:t.red,borderBottom:isSel?'none':TD.borderBottom}}>{r.cr.toFixed(2)}%</td>
+                  <td style={{...TD,textAlign:'right',color:r.bb>=90?t.text:r.bb>=80?t.orange:r.bb>0?t.red:t.textMuted,borderBottom:isSel?'none':TD.borderBottom}}>{r.bb>0?r.bb.toFixed(1)+'%':'—'}</td>
+                  <td style={{...TD,textAlign:'center',borderBottom:isSel?'none':TD.borderBottom}}>
                     <span style={{background:hb.bg,color:hb.c,padding:'2px 9px',borderRadius:10,fontSize:10,fontWeight:700}}>{hb.lbl}</span>
                   </td>
-                </tr>;
+                </tr>
+                {isSel&&<tr><td colSpan={12} style={{padding:0,border:'none'}}>
+                  <div style={{background:isDark?'linear-gradient(135deg,#111830,#151D38)':'linear-gradient(135deg,#F6F8FE,#EEF2FB)',borderTop:'2px solid '+(isDark?'#2E3A6B':'#C5D0F0'),borderBottom:'2px solid '+(isDark?'#2E3A6B':'#C5D0F0'),padding:'16px 20px'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <span style={{fontSize:13,fontWeight:700,color:isDark?'#8B9EF0':'#3B4A8A'}}>{selAsin.a}</span>
+                        <span style={{fontSize:11,color:t.textMuted}}>{selAsin.b} · {selAsin.sl||'—'}</span>
+                      </div>
+                      <button onClick={e=>{e.stopPropagation();closeDrill();}} style={{fontSize:11,padding:'3px 10px',borderRadius:7,border:'1px solid '+(isDark?'#3A4470':'#C5D0F0'),background:'transparent',color:t.textMuted,cursor:'pointer',fontFamily:'inherit'}}>Close ✕</button>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'220px 1fr',gap:16,minHeight:170}}>
+                      {/* Left: Key Metrics */}
+                      <div style={{background:isDark?'rgba(255,255,255,.04)':'rgba(255,255,255,.75)',borderRadius:10,padding:'14px 16px',border:'1px solid '+(isDark?'#2A3058':'#D8DFF5')}}>
+                        <div style={{fontSize:10,fontWeight:700,color:isDark?'#7B8DD0':'#5B6AAA',textTransform:'uppercase',letterSpacing:.8,marginBottom:10}}>Key Metrics</div>
+                        {[
+                          ['Revenue',$(selAsin.r),''],
+                          ['Net Profit',$(selAsin.n),selAsin.n>=0?t.green:t.red],
+                          ['Margin',selAsin.m.toFixed(1)+'%',mC(selAsin.m,t)],
+                          ['ACoS',selAsin.ac.toFixed(1)+'%',selAsin.ac<30?t.green:selAsin.ac<50?t.orange:t.red],
+                          ['Units',N(selAsin.u),''],
+                          ['Sessions',N(selAsin.ses),isDark?'#60AFFF':'#185FA5'],
+                          ['Conv. Rate',selAsin.cr.toFixed(2)+'%',selAsin.cr>=8?t.green:selAsin.cr>=4?t.orange:t.red],
+                          ['Buy Box%',selAsin.bb>0?selAsin.bb.toFixed(1)+'%':'—',selAsin.bb>=90?t.text:selAsin.bb>=80?t.orange:selAsin.bb>0?t.red:t.textMuted],
+                        ].map(([lbl,val,col])=><div key={lbl} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 0',borderBottom:'1px solid '+(isDark?'#252C50':'#E4EAF8')}}>
+                          <span style={{fontSize:11.5,color:t.textSec}}>{lbl}</span>
+                          <span style={{fontSize:12.5,fontWeight:600,color:col||t.text}}>{val}</span>
+                        </div>)}
+                      </div>
+                      {/* Right: Chart */}
+                      <div style={{background:isDark?'rgba(255,255,255,.04)':'rgba(255,255,255,.75)',borderRadius:10,padding:'14px 16px',border:'1px solid '+(isDark?'#2A3058':'#D8DFF5')}}>
+                        <div style={{fontSize:10,fontWeight:700,color:isDark?'#7B8DD0':'#5B6AAA',textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Revenue & Conv. Rate — daily</div>
+                        <div style={{display:'flex',gap:14,marginBottom:8,fontSize:10,color:t.textSec}}>
+                          <span><span style={{display:'inline-block',width:9,height:9,borderRadius:2,background:isDark?'#6B7FD7':'#5B6AAA',opacity:.7,marginRight:4,verticalAlign:'middle'}}/>Revenue</span>
+                          <span><span style={{display:'inline-block',width:9,height:9,borderRadius:'50%',background:t.green,marginRight:4,verticalAlign:'middle'}}/>Conv. Rate %</span>
+                        </div>
+                        {drillLoading?<div style={{padding:16,textAlign:'center',color:t.textMuted,fontSize:12}}>Loading…</div>:
+                        drillData.length>0?<ResponsiveContainer width="100%" height={150}>
+                          <ComposedChart data={drillData} margin={{top:4,right:40,bottom:0,left:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark?'#252C50':'#E0E6F5'} vertical={false}/>
+                            <XAxis dataKey="label" tick={{fontSize:9.5,fill:t.textMuted}} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
+                            <YAxis yAxisId="l" tick={{fontSize:9.5,fill:t.textMuted}} tickLine={false} axisLine={false} tickFormatter={v=>v>=1000?'$'+(v/1000).toFixed(0)+'k':'$'+v}/>
+                            <YAxis yAxisId="r" orientation="right" tick={{fontSize:9.5,fill:t.green}} tickLine={false} axisLine={false} tickFormatter={v=>v+'%'}/>
+                            <Tooltip formatter={(v,n)=>n==='CR%'?v.toFixed(2)+'%':'$'+v.toLocaleString()} contentStyle={{background:isDark?'#1A1F38':t.card,border:'1px solid '+(isDark?'#2E3A6B':'#D0D8F0'),borderRadius:8,fontSize:11}}/>
+                            <Bar yAxisId="l" dataKey="revenue" name="Revenue" fill={isDark?'#6B7FD7':'#5B6AAA'} opacity={0.6} radius={[3,3,0,0]}/>
+                            <Line yAxisId="r" type="monotone" dataKey="cr" name="CR%" stroke={t.green} strokeWidth={2} dot={false}/>
+                          </ComposedChart>
+                        </ResponsiveContainer>:<div style={{padding:14,color:t.textMuted,fontSize:11,textAlign:'center'}}>No daily data for this ASIN in selected period</div>}
+                      </div>
+                    </div>
+                  </div>
+                </td></tr>}
+                </React.Fragment>;
               })}
               {filtered.length===0&&<tr><td colSpan={12} style={{padding:24,textAlign:'center',color:t.textMuted,fontSize:12}}>No data</td></tr>}
             </tbody>
@@ -2022,56 +2074,10 @@ function ProdPage({t,fAsin,fDaily,onAsinClick,sd,ed}){
         <div style={{padding:'7px 14px',fontSize:10,color:t.textMuted,borderTop:'1px solid '+t.divider,display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}}>
           <span><SrcDot c={t.green}/>Revenue, Net Profit, ACoS — Sellerboard</span>
           <span><SrcDot c="#185FA5"/>Sessions, Conv. Rate, Buy Box% — Amazon SP-API</span>
-          <span style={{marginLeft:'auto'}}>Click row to drill down</span>
+          <span style={{marginLeft:'auto'}}>Click row to expand details</span>
         </div>
       </div>
     </Sec>
-
-    {/* Drill-down panel */}
-    {selAsin&&<Sec title={'Drill-down — '+selAsin.a} icon="" t={t} action={
-      <button onClick={closeDrill} style={{fontSize:11,padding:'4px 11px',borderRadius:8,border:'1px solid '+t.cardBorder,background:'transparent',color:t.textMuted,cursor:'pointer',fontFamily:'inherit'}}>Close ✕</button>
-    }>
-      <div style={{display:'grid',gridTemplateColumns:'245px 1fr',background:t.card,borderRadius:10}}>
-        {/* Left metrics */}
-        <div style={{padding:'18px 20px',borderRight:'1px solid '+t.divider}}>
-          <div style={{fontSize:14,fontWeight:700,color:t.primary,marginBottom:2}}>{selAsin.a}</div>
-          <div style={{fontSize:11,color:t.textMuted,marginBottom:14}}>{selAsin.b} · {selAsin.sl||'—'}</div>
-          {[
-            ['Revenue',$(selAsin.r),''],
-            ['Net Profit',$(selAsin.n),selAsin.n>=0?t.green:t.red],
-            ['Margin',selAsin.m.toFixed(1)+'%',mC(selAsin.m,t)],
-            ['ACoS',selAsin.ac.toFixed(1)+'%',selAsin.ac<30?t.green:selAsin.ac<50?t.orange:t.red],
-            ['Units',N(selAsin.u),''],
-            ['Sessions',N(selAsin.ses),'#185FA5'],
-            ['Conv. Rate',selAsin.cr.toFixed(2)+'%',selAsin.cr>=8?t.green:selAsin.cr>=4?t.orange:t.red],
-            ['Buy Box%',selAsin.bb>0?selAsin.bb.toFixed(1)+'%':'—',selAsin.bb>=90?t.text:selAsin.bb>=80?t.orange:selAsin.bb>0?t.red:t.textMuted],
-          ].map(([lbl,val,col])=><div key={lbl} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid '+t.divider}}>
-            <span style={{fontSize:12,color:t.textSec}}>{lbl}</span>
-            <span style={{fontSize:13,fontWeight:600,color:col||t.text}}>{val}</span>
-          </div>)}
-        </div>
-        {/* Right chart */}
-        <div style={{padding:'18px 20px'}}>
-          <div style={{fontSize:11,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:.6,marginBottom:10}}>Revenue & Conv. Rate — daily</div>
-          <div style={{display:'flex',gap:16,marginBottom:10,fontSize:11,color:t.textSec}}>
-            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:t.primary,opacity:.6,marginRight:4,verticalAlign:'middle'}}/>Revenue</span>
-            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:'50%',background:t.green,marginRight:4,verticalAlign:'middle'}}/>Conv. Rate %</span>
-          </div>
-          {drillLoading?<div style={{padding:20,textAlign:'center',color:t.textMuted,fontSize:12}}>Loading…</div>:
-          drillData.length>0?<ResponsiveContainer width="100%" height={170}>
-            <ComposedChart data={drillData} margin={{top:4,right:44,bottom:0,left:0}}>
-              <CartesianGrid strokeDasharray="3 3" stroke={t.chartGrid} vertical={false}/>
-              <XAxis dataKey="label" tick={{fontSize:10,fill:t.textMuted}} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
-              <YAxis yAxisId="l" tick={{fontSize:10,fill:t.textMuted}} tickLine={false} axisLine={false} tickFormatter={v=>v>=1000?'$'+(v/1000).toFixed(0)+'k':'$'+v}/>
-              <YAxis yAxisId="r" orientation="right" tick={{fontSize:10,fill:t.green}} tickLine={false} axisLine={false} tickFormatter={v=>v+'%'}/>
-              <Tooltip formatter={(v,n)=>n==='CR%'?v.toFixed(2)+'%':'$'+v.toLocaleString()} contentStyle={{background:t.card,border:'1px solid '+t.cardBorder,borderRadius:8,fontSize:11}}/>
-              <Bar yAxisId="l" dataKey="revenue" name="Revenue" fill={t.primary} opacity={0.65} radius={[3,3,0,0]}/>
-              <Line yAxisId="r" type="monotone" dataKey="cr" name="CR%" stroke={t.green} strokeWidth={2} dot={false}/>
-            </ComposedChart>
-          </ResponsiveContainer>:<div style={{padding:16,color:t.textMuted,fontSize:12,textAlign:'center'}}>No daily data for this ASIN in selected period</div>}
-        </div>
-      </div>
-    </Sec>}
 
     <div style={{marginTop:14}}><Alerts t={t} alerts={genAlerts([...fAsin],t)}/></div>
   </div>;
@@ -2842,7 +2848,23 @@ function AiChat({t,pg,contextData}){
 function Spinner({t,text}){return<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:40}}><div style={{textAlign:"center"}}><div style={{width:32,height:32,border:"3px solid "+t.cardBorder,borderTopColor:t.primary,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style><div style={{fontSize:12,color:t.textMuted,fontWeight:600}}>{text||"Loading..."}</div></div></div>}
 
 /* ═══════════ MAIN APP ═══════════ */
-const NAV=[{id:"exec",l:"Executive Overview",ico:"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"},{id:"inv",l:"Inventory",ico:"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"},{id:"plan",l:"ASIN Plan",ico:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"},{id:"prod",l:"ASIN Performance",ico:"M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"},{id:"shops",l:"Shop Performance",ico:"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.5.5-.1 1.4.6 1.4H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"},{id:"team",l:"Team Performance",ico:"M17 20h5v-2a3 3 0 00-5.4-1.7M17 20H7m10 0v-2c0-.7-.1-1.3-.4-1.9M7 20H2v-2a3 3 0 015.4-1.7M7 20v-2c0-.7.1-1.3.4-1.9m0 0a5 5 0 019.2 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"},{id:"daily",l:"Daily / Ops",ico:"M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"},{id:"analytics",l:"Analytics",ico:"M9.7 17L6 13.3l1.4-1.4 2.3 2.3 4.3-4.3 1.4 1.4L9.7 17zM12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z"}];
+const NAV_SECTIONS=[
+  {label:"OVERVIEW",items:[
+    {id:"exec",l:"Executive Overview",ico:"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"},
+    {id:"inv",l:"Inventory",ico:"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"},
+    {id:"plan",l:"ASIN Plan",ico:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"},
+  ]},
+  {label:"PERFORMANCE",items:[
+    {id:"prod",l:"ASIN Performance",ico:"M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"},
+    {id:"shops",l:"Shop Performance",ico:"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.5.5-.1 1.4.6 1.4H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"},
+    {id:"team",l:"Team Performance",ico:"M17 20h5v-2a3 3 0 00-5.4-1.7M17 20H7m10 0v-2c0-.7-.1-1.3-.4-1.9M7 20H2v-2a3 3 0 015.4-1.7M7 20v-2c0-.7.1-1.3.4-1.9m0 0a5 5 0 019.2 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"},
+  ]},
+  {label:"ANALYTICS",items:[
+    {id:"daily",l:"Daily / Ops",ico:"M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"},
+    {id:"analytics",l:"Analytics",ico:"M9.7 17L6 13.3l1.4-1.4 2.3 2.3 4.3-4.3 1.4 1.4L9.7 17zM12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z"},
+  ]}
+];
+const NAV=NAV_SECTIONS.flatMap(s=>s.items);
 const NavIco=({d,size=18,color})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d={d}/></svg>;
 
 export default function App(){
@@ -3144,7 +3166,7 @@ export default function App(){
     {/* SIDEBAR (desktop) or BOTTOM NAV (mobile) */}
     {!mob&&<div style={{width:(tab||!sb)?56:220,background:t.sidebar,borderRight:"1px solid "+t.sidebarBorder,display:"flex",flexDirection:"column",transition:"width .2s",flexShrink:0,overflow:"hidden"}}>
       <div style={{padding:"16px 14px 12px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+t.sidebarBorder,minHeight:54}}><div style={{width:34,height:34,borderRadius:10,background:isDark?"#1E2348":"linear-gradient(135deg,#3B4A8A,#6B7FD7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(59,74,138,.3)"}}><svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="4,24 10,16 16,19 22,10 28,14" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="10" cy="16" r="2.2" fill="white"/><circle cx="16" cy="19" r="2.2" fill="white"/><circle cx="22" cy="10" r="2.2" fill="white"/></svg></div>{!tab&&sb&&<div><div style={{fontSize:15,fontWeight:800,color:t.text,lineHeight:1.1,letterSpacing:-.3}}>Amazon</div><div style={{fontSize:8.5,color:t.textMuted,letterSpacing:2,fontWeight:700,textTransform:"uppercase",marginTop:1}}>Dashboard</div></div>}</div>
-      <div style={{flex:1,padding:6,overflowY:"auto"}}>{NAV.map(n=><button key={n.id} onClick={()=>setPg(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:(!tab&&sb)?"11px 16px":"11px 0",borderRadius:10,border:"none",cursor:"pointer",marginBottom:2,background:pg===n.id?t.sidebarActive:"transparent",color:pg===n.id?t.primary:t.textSec,justifyContent:(!tab&&sb)?"flex-start":"center",fontSize:13.5,transition:"all .15s ease"}} onMouseEnter={e=>{if(pg!==n.id)e.currentTarget.style.background=t.tableHover}} onMouseLeave={e=>{if(pg!==n.id)e.currentTarget.style.background="transparent"}}><NavIco d={n.ico} size={18} color={pg===n.id?t.primary:t.textMuted}/>{(!tab&&sb)&&<span style={{fontWeight:pg===n.id?700:500,whiteSpace:"nowrap",letterSpacing:-.1}}>{n.l}</span>}</button>)}</div>
+      <div style={{flex:1,padding:6,overflowY:"auto"}}>{NAV_SECTIONS.map((sec,si)=><div key={si} style={{marginBottom:4}}>{(!tab&&sb)&&<div style={{padding:'8px 16px 4px',fontSize:10,fontWeight:700,color:t.textMuted,letterSpacing:1.5,textTransform:'uppercase'}}>{sec.label}</div>}{sec.items.map(n=><button key={n.id} onClick={()=>setPg(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:(!tab&&sb)?"11px 16px":"11px 0",borderRadius:10,border:"none",cursor:"pointer",marginBottom:2,background:pg===n.id?t.sidebarActive:"transparent",color:pg===n.id?t.primary:t.textSec,justifyContent:(!tab&&sb)?"flex-start":"center",fontSize:13.5,transition:"all .15s ease"}} onMouseEnter={e=>{if(pg!==n.id)e.currentTarget.style.background=t.tableHover}} onMouseLeave={e=>{if(pg!==n.id)e.currentTarget.style.background="transparent"}}><NavIco d={n.ico} size={18} color={pg===n.id?t.primary:t.textMuted}/>{(!tab&&sb)&&<span style={{fontWeight:pg===n.id?700:500,whiteSpace:"nowrap",letterSpacing:-.1}}>{n.l}</span>}</button>)}</div>)}</div>
       {!tab&&<div style={{padding:'8px 8px 10px',borderTop:'1px solid '+t.sidebarBorder}}><button onClick={()=>setSb(!sb)} title={sb?'Collapse sidebar':'Expand sidebar'} style={{width:'100%',padding:'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:t.textMuted,display:'flex',alignItems:'center',justifyContent:sb?'flex-start':'center',gap:8,fontSize:12,fontWeight:500,transition:'all .15s'}} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{transform:sb?'rotate(0deg)':'rotate(180deg)',transition:'transform .2s',flexShrink:0}}><path d="M15 18l-6-6 6-6"/></svg>{sb&&<span>Collapse</span>}</button></div>}
     </div>}
 
@@ -3186,7 +3208,7 @@ export default function App(){
         />}
         {pg==="inv"&&<InvPage t={t} mob={mob} invData={invData} invShop={invShop} invTrend={invTrend} invFeeMonthly={invFeeMonthly} invAsin={invAsin} onAsinClick={setStockAsin}/>}
         {pg==="plan"&&<PlanPage t={t} onAsinClick={setStockAsin} planKpi={planKpiState} monthPlanData={monthPlanState} asinPlanBkData={asinPlanBkState} seller={seller} store={store} asinF={asinF} onStoreChange={setStore} onSellerChange={setSeller}/>}
-        {pg==="prod"&&<ProdPage t={t} onAsinClick={setStockAsin} fAsin={fAsin} fDaily={fDaily} sd={sd} ed={ed}/>}
+        {pg==="prod"&&<ProdPage t={t} isDark={isDark} onAsinClick={setStockAsin} fAsin={fAsin} fDaily={fDaily} sd={sd} ed={ed}/>}
         {pg==="shops"&&<ShopPage t={t} fShopData={fShopData} fDaily={fDaily}/>}
         {pg==="team"&&<TeamPage t={t} onAsinClick={setStockAsin} fSeller={fSeller} fDaily={fDaily} asinPlanBkData={asinPlanBkState}/>}
         {pg==="daily"&&<OpsPage t={t} fDaily={fDaily} fShopData={fShopData}/>}
