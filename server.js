@@ -1319,6 +1319,46 @@ app.get('/api/exec/detail', async (req, res) => {
   } catch (e) { console.error('exec/detail:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+/* ═══════════ EXEC MONTHLY LAST YEAR ═══════════ */
+/* Returns monthly revenue/GP/units/ads for the previous year (same filter logic as plan/actuals) */
+app.get('/api/exec/monthly-ly', async (req, res) => {
+  try {
+    const { store, seller, asin: af } = req.query;
+    const lyYear = new Date().getFullYear() - 1;
+    const accId = await storeToAccIds(store);
+    const sd = `${lyYear}-01-01`, ed = `${lyYear}-12-31`;
+    let rows;
+
+    if (useProduct(seller, af)) {
+      const f = pWhere(sd, ed, accId, seller, af);
+      rows = await qc(`SELECT MONTH(p.date) as mn,
+        SUM(${P_SALES}) as revenue, SUM(COALESCE(p.grossProfit,0)) as gp,
+        SUM(COALESCE(p.netProfit,0)) as np, SUM(${P_UNITS}) as units,
+        SUM(ABS(${P_ADS})) as ads, SUM(COALESCE(p.sessions,0)) as sessions
+        FROM seller_board_product p LEFT JOIN asin a ON p.asin COLLATE utf8mb4_0900_ai_ci=a.asin
+        ${f.w} GROUP BY MONTH(p.date) ORDER BY mn`, f.p, 45000);
+    } else {
+      const f = scWhere(sd, ed, accId);
+      rows = await qc(`SELECT MONTH(sc.date) as mn,
+        SUM(${SC_SALES}) as revenue, SUM(COALESCE(sc.grossProfit,0)) as gp,
+        SUM(COALESCE(sc.netProfit,0)) as np, SUM(${SC_UNITS}) as units,
+        SUM(ABS(${SC_ADS})) as ads, SUM(COALESCE(sc.sessions,0)) as sessions
+        FROM ${salesFrom()} ${f.w} GROUP BY MONTH(sc.date) ORDER BY mn`, f.p, 45000);
+    }
+    const MS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    res.json((rows || []).map(r => ({
+      mn: parseInt(r.mn),
+      m: MS[(parseInt(r.mn)||1)-1],
+      revenue: parseFloat(r.revenue)||0,
+      gp: parseFloat(r.gp)||0,
+      np: parseFloat(r.np)||0,
+      units: parseInt(r.units)||0,
+      ads: parseFloat(r.ads)||0,
+      sessions: parseFloat(r.sessions)||0,
+    })));
+  } catch (e) { console.error('exec/monthly-ly:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 /* ═══════════ SERVE FRONTEND ═══════════ */
 const distPath = join(__dirname, 'dist');
 app.use(express.static(distPath));
