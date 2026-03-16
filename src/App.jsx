@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
-import { checkBackend, api, apiPost, authLogin, authMe, authChangePassword, authGetUsers, authCreateUser, authUpdateUser, authDeleteUser, clearAuth, getToken } from "./api.js";
+import { checkBackend, api, apiPost, authLogin, authMe, authChangePassword, authGetUsers, authCreateUser, authUpdateUser, authDeleteUser, authSendInvite, authVerifyInvite, authAcceptInvite, authGetInvites, authRevokeInvite, clearAuth, getToken, setToken } from "./api.js";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, AreaChart, Area, ComposedChart, Cell, ScatterChart, Scatter,
@@ -2979,6 +2979,110 @@ const NAV_SECTIONS=[
 const NAV=NAV_SECTIONS.flatMap(s=>s.items);
 const NavIco=({d,size=18,color})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d={d}/></svg>;
 
+/* ═══════════ INVITE ACCEPT PAGE ═══════════ */
+function InviteAcceptPage({ token, onDone }) {
+  const sysDark = window.matchMedia?.('(prefers-color-scheme:dark)').matches;
+  const dk = sysDark;
+  const [invite, setInvite] = useState(null);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  useEffect(() => {
+    authVerifyInvite(token).then(setInvite).catch(e => setError(e.message)).finally(() => setChecking(false));
+  }, [token]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (password !== confirm) { setError('Passwords do not match'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setError(''); setLoading(true);
+    try {
+      const data = await authAcceptInvite(token, name, password);
+      // Clear invite param from URL
+      window.history.replaceState({}, '', window.location.pathname);
+      onDone(data.user);
+    } catch (err) { setError(err.message); }
+    setLoading(false);
+  };
+
+  const bg = dk ? 'linear-gradient(135deg,#0D0F1A 0%,#1A1D35 50%,#2A2D4A 100%)' : 'linear-gradient(135deg,#E8ECF5 0%,#F0F2F8 50%,#F5F6FA 100%)';
+  const cardBg = dk ? '#181B2E' : '#FFFFFF';
+  const cardBorder = dk ? '#2E3350' : '#D0D5E0';
+  const cardShadow = dk ? '0 20px 60px rgba(0,0,0,0.5)' : '0 20px 60px rgba(59,74,138,0.12)';
+  const inputBg = dk ? '#1A1D30' : '#F5F6FA';
+  const inputBorder = dk ? '#363B58' : '#D0D5E0';
+  const inputFocus = dk ? '#8B9EF0' : '#3B4A8A';
+  const textMain = dk ? '#F0F2FA' : '#1A1D26';
+  const textSec = dk ? '#9099BE' : '#4A5068';
+  const errBg = dk ? '#2D1414' : '#FFF1EC';
+  const errColor = dk ? '#FF6B6B' : '#D4380D';
+
+  if (checking) return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:bg,color:textSec,fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:14}}>Verifying invite...</div>;
+
+  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+    <div style={{width:'100%',maxWidth:420,padding:40,background:cardBg,borderRadius:20,border:'1px solid '+cardBorder,boxShadow:cardShadow}}>
+      <div style={{textAlign:'center',marginBottom:28}}>
+        <div style={{width:56,height:56,margin:'0 auto 16px',borderRadius:14,background:'linear-gradient(135deg,#1B8553,#3DD68C)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div style={{fontSize:21,fontWeight:800,color:textMain,letterSpacing:'-0.5px'}}>You're Invited</div>
+        <div style={{fontSize:13,color:textSec,marginTop:6}}>Set up your account to get started</div>
+      </div>
+
+      {!invite ? (
+        <div style={{padding:'16px',background:errBg,borderRadius:12,textAlign:'center'}}>
+          <div style={{fontSize:14,fontWeight:700,color:errColor,marginBottom:6}}>Invite not valid</div>
+          <div style={{fontSize:12,color:textSec}}>{error || 'This invite link has expired or already been used.'}</div>
+          <button onClick={()=>{window.history.replaceState({},'',window.location.pathname);window.location.reload()}}
+            style={{marginTop:14,padding:'8px 20px',background:'linear-gradient(135deg,#3B4A8A,#5A6BC5)',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>Go to Login</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'12px 16px',background:dk?'#1E2348':'#EEF0F8',borderRadius:10,marginBottom:20}}>
+            <div style={{fontSize:11,color:textSec,fontWeight:600}}>INVITED AS</div>
+            <div style={{fontSize:14,fontWeight:700,color:textMain,marginTop:2}}>{invite.email}</div>
+            <div style={{display:'inline-block',marginTop:4,padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:700,background:dk?'#2E3350':'#D0D5E0',color:textSec,textTransform:'uppercase'}}>{invite.role}</div>
+          </div>
+
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:textSec,marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Your Name</label>
+            <input type="text" value={name} onChange={e=>setName(e.target.value)} required autoFocus placeholder="Full name"
+              style={{width:'100%',padding:'12px 14px',background:inputBg,border:'1px solid '+inputBorder,borderRadius:10,color:textMain,fontSize:14,outline:'none',boxSizing:'border-box'}}
+              onFocus={e=>e.target.style.borderColor=inputFocus} onBlur={e=>e.target.style.borderColor=inputBorder}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:textSec,marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Choose Password</label>
+            <div style={{position:'relative'}}>
+              <input type={showPw?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} required placeholder="Min 6 characters"
+                style={{width:'100%',padding:'12px 40px 12px 14px',background:inputBg,border:'1px solid '+inputBorder,borderRadius:10,color:textMain,fontSize:14,outline:'none',boxSizing:'border-box'}}
+                onFocus={e=>e.target.style.borderColor=inputFocus} onBlur={e=>e.target.style.borderColor=inputBorder}/>
+              <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:textSec,cursor:'pointer',fontSize:12}}>{showPw?'Hide':'Show'}</button>
+            </div>
+          </div>
+          <div style={{marginBottom:18}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:textSec,marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Confirm Password</label>
+            <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required placeholder="Re-enter password"
+              style={{width:'100%',padding:'12px 14px',background:inputBg,border:'1px solid '+inputBorder,borderRadius:10,color:textMain,fontSize:14,outline:'none',boxSizing:'border-box'}}
+              onFocus={e=>e.target.style.borderColor=inputFocus} onBlur={e=>e.target.style.borderColor=inputBorder}/>
+          </div>
+
+          {error && <div style={{padding:'10px 14px',background:errBg,borderRadius:8,color:errColor,fontSize:12,marginBottom:16,fontWeight:500}}>{error}</div>}
+
+          <button type="submit" disabled={loading}
+            style={{width:'100%',padding:'13px',background:loading?cardBorder:'linear-gradient(135deg,#1B8553,#3DD68C)',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?'wait':'pointer',opacity:loading?0.7:1}}>
+            {loading ? 'Creating account...' : 'Create Account & Sign In'}
+          </button>
+        </form>
+      )}
+    </div>
+  </div>;
+}
+
 /* ═══════════ LOGIN PAGE ═══════════ */
 function LoginPage({ onLogin }) {
   const sysDark = window.matchMedia?.('(prefers-color-scheme:dark)').matches;
@@ -3075,24 +3179,33 @@ function LoginPage({ onLogin }) {
 function AdminUsersPanel({ t, onClose }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer' });
+  const [showInvite, setShowInvite] = useState(false);
+  const [invEmail, setInvEmail] = useState('');
+  const [invRole, setInvRole] = useState('viewer');
+  const [inviteLink, setInviteLink] = useState('');
+  const [invSending, setInvSending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const linkRef = useRef(null);
 
   const load = () => { setLoading(true); authGetUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(load, []);
 
-  const handleAdd = async () => {
-    setError(''); setSuccess('');
+  const handleInvite = async () => {
+    if (!invEmail) return;
+    setError(''); setSuccess(''); setInviteLink(''); setInvSending(true);
     try {
-      await authCreateUser(form.email, form.name, form.password, form.role);
-      setSuccess('User created successfully');
-      setForm({ email: '', name: '', password: '', role: 'viewer' });
-      setShowAdd(false);
-      load();
-      setTimeout(()=>setSuccess(''),3000);
+      const data = await authSendInvite(invEmail.trim(), invRole);
+      setInviteLink(data.inviteUrl);
+      setSuccess('Invite created — copy the link and send it to ' + invEmail);
     } catch (e) { setError(e.message); }
+    setInvSending(false);
+  };
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(inviteLink).then(() => {
+      setSuccess('Link copied!'); setTimeout(() => setSuccess(''), 2000);
+    }).catch(() => { linkRef.current?.select(); document.execCommand('copy'); });
   };
 
   const handleToggle = async (id, active) => {
@@ -3124,9 +3237,9 @@ function AdminUsersPanel({ t, onClose }) {
             <div style={{fontSize:11,color:t.textMuted,marginTop:3}}>{users.length} member{users.length!==1?'s':''} · Admin only</div>
           </div>
           <div style={{display:'flex',gap:6}}>
-            <button onClick={()=>{setShowAdd(!showAdd);setError('');setSuccess('')}}
-              style={{padding:'7px 14px',background:showAdd?t.tableBg:'linear-gradient(135deg,'+t.primary+',#5A6BC5)',color:showAdd?t.textSec:'#fff',border:showAdd?'1px solid '+t.cardBorder:'none',borderRadius:10,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
-              {showAdd?'Cancel':'+ Invite'}
+            <button onClick={()=>{setShowInvite(!showInvite);setError('');setSuccess('');setInviteLink('')}}
+              style={{padding:'7px 14px',background:showInvite?t.tableBg:'linear-gradient(135deg,'+t.primary+',#5A6BC5)',color:showInvite?t.textSec:'#fff',border:showInvite?'1px solid '+t.cardBorder:'none',borderRadius:10,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
+              {showInvite?'Cancel':'+ Invite'}
             </button>
             <button onClick={onClose} style={{width:32,height:32,borderRadius:10,background:t.tableBg,border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background=t.tableBg}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.textMuted} strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -3141,23 +3254,30 @@ function AdminUsersPanel({ t, onClose }) {
         </div>}
         {success&&<div style={{marginTop:12,padding:'9px 14px',background:t.greenBg,borderRadius:10,color:t.green,fontSize:12,fontWeight:500}}>✓ {success}</div>}
 
-        {/* Add form */}
-        {showAdd&&<div style={{marginTop:14,padding:16,background:t.tableBg,borderRadius:14,display:'flex',flexDirection:'column',gap:10}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <input placeholder="Email address" type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={sInput}/>
-            <input placeholder="Display name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={sInput}/>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <input placeholder="Password (min 6)" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} style={sInput}/>
-            <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} style={{...sInput,appearance:'auto'}}>
+        {/* Invite form — just email + role */}
+        {showInvite&&<div style={{marginTop:14,padding:16,background:t.tableBg,borderRadius:14,display:'flex',flexDirection:'column',gap:10}}>
+          <div style={{fontSize:11,color:t.textMuted,fontWeight:600}}>Send an invite link — they'll set their own password</div>
+          <div style={{display:'flex',gap:8}}>
+            <input placeholder="Email address" type="email" value={invEmail} onChange={e=>setInvEmail(e.target.value)}
+              style={{...sInput,flex:1}} onKeyDown={e=>e.key==='Enter'&&handleInvite()}/>
+            <select value={invRole} onChange={e=>setInvRole(e.target.value)} style={{...sInput,width:100,flex:'none',appearance:'auto'}}>
               <option value="viewer">Viewer</option>
               <option value="admin">Admin</option>
             </select>
+            <button onClick={handleInvite} disabled={!invEmail||invSending}
+              style={{padding:'10px 18px',background:(!invEmail||invSending)?t.inputBorder:'linear-gradient(135deg,'+t.primary+',#5A6BC5)',color:'#fff',border:'none',borderRadius:10,fontSize:12,fontWeight:700,cursor:(!invEmail||invSending)?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:(!invEmail||invSending)?0.5:1}}>
+              {invSending?'Sending...':'Send Invite'}
+            </button>
           </div>
-          <button onClick={handleAdd} disabled={!form.email||!form.name||!form.password}
-            style={{padding:'10px',background:(!form.email||!form.name||!form.password)?t.inputBorder:'linear-gradient(135deg,'+t.primary+',#5A6BC5)',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:(!form.email||!form.name||!form.password)?'not-allowed':'pointer',opacity:(!form.email||!form.name||!form.password)?0.5:1,transition:'opacity .15s'}}>
-            Create Account
-          </button>
+          {/* Copy link fallback */}
+          {inviteLink&&<div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <input ref={linkRef} readOnly value={inviteLink} onClick={e=>e.target.select()}
+              style={{...sInput,fontSize:11,color:t.textMuted,background:t.card,flex:1,cursor:'text'}}/>
+            <button onClick={copyLink}
+              style={{padding:'10px 14px',background:t.primaryLight,border:'1px solid '+t.primary+'33',borderRadius:10,fontSize:11,fontWeight:700,color:t.primary,cursor:'pointer',whiteSpace:'nowrap'}}>
+              Copy Link
+            </button>
+          </div>}
         </div>}
       </div>
 
@@ -3213,8 +3333,10 @@ function AdminUsersPanel({ t, onClose }) {
 export default function App(){
   const[authUser,setAuthUser]=useState(()=>{try{const u=localStorage.getItem('dashboard_user');return u?JSON.parse(u):null}catch{return null}});
   const[authChecking,setAuthChecking]=useState(true);
+  const[inviteToken]=useState(()=>new URLSearchParams(window.location.search).get('invite'));
 
   useEffect(()=>{
+    if(inviteToken){setAuthChecking(false);return;} // skip token check if on invite page
     if(!getToken()){setAuthChecking(false);return;}
     authMe().then(user=>{
       if(user){setAuthUser(user);localStorage.setItem('dashboard_user',JSON.stringify(user));}
@@ -3226,6 +3348,9 @@ export default function App(){
   const handleLogout=()=>{clearAuth();setAuthUser(null);};
 
   if(authChecking)return<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:window.matchMedia?.('(prefers-color-scheme:dark)').matches?'#0D0F1A':'#F0F2F8',color:'#9099BE',fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:14}}>Verifying session...</div>;
+
+  // Invite flow — show accept page
+  if(inviteToken)return<InviteAcceptPage token={inviteToken} onDone={handleLogin}/>;
 
   if(!authUser)return<LoginPage onLogin={handleLogin}/>;
 
