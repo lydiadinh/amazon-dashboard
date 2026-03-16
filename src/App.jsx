@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
-import { checkBackend, api, apiPost } from "./api.js";
+import { checkBackend, api, apiPost, authLogin, authMe, authChangePassword, authGetUsers, authCreateUser, authUpdateUser, authDeleteUser, clearAuth, getToken } from "./api.js";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, AreaChart, Area, ComposedChart, Cell, ScatterChart, Scatter,
@@ -2979,7 +2979,186 @@ const NAV_SECTIONS=[
 const NAV=NAV_SECTIONS.flatMap(s=>s.items);
 const NavIco=({d,size=18,color})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d={d}/></svg>;
 
+/* ═══════════ LOGIN PAGE ═══════════ */
+function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      const data = await authLogin(email, password);
+      onLogin(data.user);
+    } catch (err) { setError(err.message); }
+    setLoading(false);
+  };
+
+  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#0D0F1A 0%,#1A1D35 50%,#2A2D4A 100%)',fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+    <div style={{width:'100%',maxWidth:400,padding:40,background:'#181B2E',borderRadius:20,border:'1px solid #2E3350',boxShadow:'0 20px 60px rgba(0,0,0,0.5)'}}>
+      <div style={{textAlign:'center',marginBottom:32}}>
+        <div style={{width:56,height:56,margin:'0 auto 16px',borderRadius:14,background:'linear-gradient(135deg,#3B4A8A,#5A6BC5)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4,18 8,12 12,14 16,8 20,11"/>
+            <circle cx="8" cy="12" r="1.5" fill="white"/>
+            <circle cx="16" cy="8" r="1.5" fill="white"/>
+          </svg>
+        </div>
+        <div style={{fontSize:22,fontWeight:800,color:'#F0F2FA',letterSpacing:'-0.5px'}}>Amazon FBA Dashboard</div>
+        <div style={{fontSize:13,color:'#9099BE',marginTop:6}}>Sign in to continue</div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div style={{marginBottom:16}}>
+          <label style={{display:'block',fontSize:11,fontWeight:600,color:'#9099BE',marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Email</label>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoFocus
+            placeholder="your@email.com"
+            style={{width:'100%',padding:'12px 14px',background:'#1A1D30',border:'1px solid #363B58',borderRadius:10,color:'#F0F2FA',fontSize:14,outline:'none',boxSizing:'border-box',transition:'border .2s'}}
+            onFocus={e=>e.target.style.borderColor='#8B9EF0'} onBlur={e=>e.target.style.borderColor='#363B58'}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label style={{display:'block',fontSize:11,fontWeight:600,color:'#9099BE',marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Password</label>
+          <div style={{position:'relative'}}>
+            <input type={showPw?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} required
+              placeholder="••••••••"
+              style={{width:'100%',padding:'12px 40px 12px 14px',background:'#1A1D30',border:'1px solid #363B58',borderRadius:10,color:'#F0F2FA',fontSize:14,outline:'none',boxSizing:'border-box',transition:'border .2s'}}
+              onFocus={e=>e.target.style.borderColor='#8B9EF0'} onBlur={e=>e.target.style.borderColor='#363B58'}/>
+            <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#9099BE',cursor:'pointer',fontSize:12}}>{showPw?'Hide':'Show'}</button>
+          </div>
+        </div>
+
+        {error && <div style={{padding:'10px 14px',background:'#2D1414',border:'1px solid #5C2020',borderRadius:8,color:'#FF6B6B',fontSize:12,marginBottom:16,fontWeight:500}}>{error}</div>}
+
+        <button type="submit" disabled={loading}
+          style={{width:'100%',padding:'13px',background:loading?'#2E3350':'linear-gradient(135deg,#3B4A8A,#5A6BC5)',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?'wait':'pointer',transition:'opacity .2s',opacity:loading?0.7:1}}>
+          {loading ? 'Signing in...' : 'Sign In'}
+        </button>
+      </form>
+
+      <div style={{textAlign:'center',marginTop:20,fontSize:11,color:'#6B7294'}}>
+        Contact admin to get an account
+      </div>
+    </div>
+  </div>;
+}
+
+/* ═══════════ ADMIN: USER MANAGEMENT PANEL ═══════════ */
+function AdminUsersPanel({ t, onClose }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer' });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const load = () => { setLoading(true); authGetUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false)); };
+  useEffect(load, []);
+
+  const handleAdd = async () => {
+    setError(''); setSuccess('');
+    try {
+      await authCreateUser(form.email, form.name, form.password, form.role);
+      setSuccess('User created');
+      setForm({ email: '', name: '', password: '', role: 'viewer' });
+      setShowAdd(false);
+      load();
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleToggle = async (id, active) => {
+    try { await authUpdateUser(id, { active: !active }); load(); } catch (e) { setError(e.message); }
+  };
+
+  const handleDelete = async (id, email) => {
+    if (!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+    try { await authDeleteUser(id); load(); } catch (e) { setError(e.message); }
+  };
+
+  const handleRole = async (id, currentRole) => {
+    const newRole = currentRole === 'admin' ? 'viewer' : 'admin';
+    try { await authUpdateUser(id, { role: newRole }); load(); } catch (e) { setError(e.message); }
+  };
+
+  const sInput = { padding: '10px 12px', background: t.inputBg, border: '1px solid ' + t.inputBorder, borderRadius: 8, color: t.text, fontSize: 13, outline: 'none', boxSizing: 'border-box', width: '100%' };
+
+  return <div style={{position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+    <div onClick={onClose} style={{position:'absolute',inset:0,background:'rgba(0,0,0,.5)'}}/>
+    <div style={{position:'relative',width:'100%',maxWidth:640,maxHeight:'80vh',overflow:'auto',background:t.card,borderRadius:16,border:'1px solid '+t.cardBorder,padding:24,boxShadow:'0 20px 60px '+t.shadow}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <div style={{fontSize:18,fontWeight:800,color:t.text}}>User Management</div>
+          <div style={{fontSize:12,color:t.textMuted,marginTop:2}}>Admin only · {users.length} users</div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setShowAdd(!showAdd)} style={{padding:'8px 16px',background:t.primary,color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>{showAdd?'Cancel':'+ Add User'}</button>
+          <button onClick={onClose} style={{padding:'8px 12px',background:t.tableBg,border:'1px solid '+t.cardBorder,borderRadius:8,color:t.textSec,fontSize:12,cursor:'pointer'}}>Close</button>
+        </div>
+      </div>
+
+      {error && <div style={{padding:'10px 14px',background:t.redBg,borderRadius:8,color:t.red,fontSize:12,marginBottom:12}}>{error}</div>}
+      {success && <div style={{padding:'10px 14px',background:t.greenBg,borderRadius:8,color:t.green,fontSize:12,marginBottom:12}}>{success}</div>}
+
+      {showAdd && <div style={{padding:16,background:t.tableBg,borderRadius:12,marginBottom:16,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <input placeholder="Email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={sInput}/>
+        <input placeholder="Full Name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={sInput}/>
+        <input placeholder="Password (min 6)" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} style={sInput}/>
+        <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} style={sInput}>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button onClick={handleAdd} style={{gridColumn:'span 2',padding:'10px',background:t.green,color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>Create User</button>
+      </div>}
+
+      {loading ? <div style={{textAlign:'center',padding:40,color:t.textMuted}}>Loading...</div> :
+      <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12}}>
+        <thead><tr>{['Email','Name','Role','Status','Last Login','Actions'].map((h,i)=>
+          <th key={i} style={{padding:'10px 12px',textAlign:'left',color:t.textMuted,fontWeight:700,fontSize:10,textTransform:'uppercase',borderBottom:'2px solid '+t.divider,background:t.tableBg}}>{h}</th>
+        )}</tr></thead>
+        <tbody>{users.map(u=><tr key={u.id} style={{borderBottom:'1px solid '+t.divider}}>
+          <td style={{padding:'10px 12px',fontWeight:600,color:t.text}}>{u.email}</td>
+          <td style={{padding:'10px 12px',color:t.textSec}}>{u.name}</td>
+          <td style={{padding:'10px 12px'}}><span style={{padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:700,background:u.role==='admin'?t.primaryLight:t.tableBg,color:u.role==='admin'?t.primary:t.textMuted}}>{u.role}</span></td>
+          <td style={{padding:'10px 12px'}}><span style={{color:u.active?t.green:t.red,fontWeight:600}}>{u.active?'Active':'Disabled'}</span></td>
+          <td style={{padding:'10px 12px',color:t.textMuted,fontSize:11}}>{u.last_login?new Date(u.last_login).toLocaleDateString():'Never'}</td>
+          <td style={{padding:'10px 12px'}}>
+            <div style={{display:'flex',gap:6}}>
+              <button onClick={()=>handleRole(u.id,u.role)} title="Toggle role" style={{padding:'4px 8px',background:t.tableBg,border:'1px solid '+t.cardBorder,borderRadius:6,fontSize:10,cursor:'pointer',color:t.textSec}}>{u.role==='admin'?'→ Viewer':'→ Admin'}</button>
+              <button onClick={()=>handleToggle(u.id,u.active)} title="Toggle active" style={{padding:'4px 8px',background:u.active?t.redBg:t.greenBg,border:'none',borderRadius:6,fontSize:10,cursor:'pointer',color:u.active?t.red:t.green}}>{u.active?'Disable':'Enable'}</button>
+              <button onClick={()=>handleDelete(u.id,u.email)} title="Delete" style={{padding:'4px 8px',background:t.redBg,border:'none',borderRadius:6,fontSize:10,cursor:'pointer',color:t.red}}>Delete</button>
+            </div>
+          </td>
+        </tr>)}</tbody>
+      </table>}
+    </div>
+  </div>;
+}
+
 export default function App(){
+  // ═══ AUTH STATE ═══
+  const[authUser,setAuthUser]=useState(()=>{try{const u=localStorage.getItem('dashboard_user');return u?JSON.parse(u):null}catch{return null}});
+  const[authChecking,setAuthChecking]=useState(true);
+  const[showAdmin,setShowAdmin]=useState(false);
+
+  useEffect(()=>{
+    if(!getToken()){setAuthChecking(false);return;}
+    authMe().then(user=>{
+      if(user){setAuthUser(user);localStorage.setItem('dashboard_user',JSON.stringify(user));}
+      else setAuthUser(null);
+    }).finally(()=>setAuthChecking(false));
+  },[]);
+
+  const handleLogin=(user)=>{setAuthUser(user);};
+  const handleLogout=()=>{clearAuth();setAuthUser(null);};
+
+  // Show loading while checking token
+  if(authChecking)return<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0D0F1A',color:'#9099BE',fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:14}}>Verifying session...</div>;
+
+  // Show login if not authenticated
+  if(!authUser)return<LoginPage onLogin={handleLogin}/>;
+
   const{mob,tab}=useResp();
   const[pg,setPg]=useState("exec");const[sb,setSb]=useState(true);const[isDark,setDark]=useState(false);
   const t=isDark?TH.dark:TH.light;const cn=NAV.find(n=>n.id===pg);
@@ -3295,6 +3474,9 @@ export default function App(){
             {loading&&<span style={{fontSize:9,color:t.orange,fontWeight:600}}>⏳</span>}
             <span style={{fontSize:9.5,fontWeight:700,padding:"4px 12px",borderRadius:10,background:live?"#EAFAF1":"#FFF8EC",color:live?"#1B8553":"#C67D1A",letterSpacing:.5}}>{live?"● Live DB":"○ No DB"}</span><span style={{fontSize:9,color:t.textMuted,marginLeft:4,fontWeight:600}}>v4.4</span>
             <button onClick={()=>setDark(!isDark)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:10,padding:"6px 12px",cursor:"pointer",fontSize:13,color:t.textSec,transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background=t.card}>{isDark?"Light":"Dark"}</button>
+            {authUser?.role==="admin"&&<button onClick={()=>setShowAdmin(true)} style={{background:t.card,border:"1px solid "+t.inputBorder,borderRadius:10,padding:"6px 12px",cursor:"pointer",fontSize:11,color:t.primary,fontWeight:600,transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.background=t.tableHover} onMouseLeave={e=>e.currentTarget.style.background=t.card}>Users</button>}
+            <span style={{fontSize:10,color:t.textMuted,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={authUser?.email}>{authUser?.name||authUser?.email}</span>
+            <button onClick={handleLogout} style={{background:t.redBg,border:"none",borderRadius:10,padding:"6px 12px",cursor:"pointer",fontSize:11,color:t.red,fontWeight:600}}>Logout</button>
           </div>
         </div>
         {/* FILTER BAR — exec page has its own filters inside Zone B */}
@@ -3338,5 +3520,6 @@ export default function App(){
 
     <AiChat t={t} pg={pg} contextData={{em,fAsin,fShopData,fSeller,invData,invShop,fDaily,sd,ed}}/>
     <StockModal asin={stockAsin} t={t} onClose={()=>setStockAsin(null)}/>
+    {showAdmin&&<AdminUsersPanel t={t} onClose={()=>setShowAdmin(false)}/>}
   </div>;
 }
