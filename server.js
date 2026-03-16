@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -13,6 +14,41 @@ const PORT = process.env.PORT || 3001;
 const VER = 'v4.5-2026-03-11';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+/* ═══════════ AUTH CONFIG ═══════════ */
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const TOKEN_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days
+if (!process.env.JWT_SECRET) console.warn('⚠️ JWT_SECRET not set — using random (tokens invalidate on restart). Set JWT_SECRET in Railway env vars.');
+
+// Password hashing (Node built-in crypto, zero dependencies)
+function hashPassword(password, salt) {
+  if (!salt) salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return { hash, salt };
+}
+function verifyPassword(password, hash, salt) {
+  const { hash: check } = hashPassword(password, salt);
+  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
+}
+// Simple JWT-like token (HMAC-SHA256, no external lib needed)
+function signToken(payload) {
+  const data = { ...payload, exp: Date.now() + TOKEN_EXPIRY, iat: Date.now() };
+  const b64 = Buffer.from(JSON.stringify(data)).toString('base64url');
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(b64).digest('base64url');
+  return b64 + '.' + sig;
+}
+function verifyToken(token) {
+  if (!token) return null;
+  const [b64, sig] = token.split('.');
+  if (!b64 || !sig) return null;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(b64).digest('base64url');
+  if (sig !== expected) return null;
+  try {
+    const data = JSON.parse(Buffer.from(b64, 'base64url').toString());
+    if (data.exp && data.exp < Date.now()) return null; // expired
+    return data;
+  } catch { return null; }
+}
 
 /* ═══════════ DATABASE ═══════════ */
 let pool = null;
@@ -184,6 +220,162 @@ app.get('/api/health', async (req, res) => {
     if (pool) { await q('SELECT 1'); res.json({ status: 'ok', database: 'connected', version: VER }); }
     else res.json({ status: 'ok', database: 'not configured', version: VER });
   } catch (e) { res.json({ status: 'ok', database: 'error: ' + e.message, version: VER }); }
+});
+
+/* ═══════════ AUTH: USERS TABLE + SEED ═══════════ */
+async function ensureUsersTable() {
+  if (!pool) return;
+  try {
+    await q(`CREATE TABLE IF NOT EXISTS dashboard_users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      name VARCHAR(255) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      password_salt VARCHAR(64) NOT NULL,
+      role ENUM('admin','viewer') NOT NULL DEFAULT 'viewer',
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_login TIMESTAMP NULL
+    )`, [], 10000);
+    console.log('✅ dashboard_users table ready');
+
+    // Seed default admin if table is empty
+    const count = await q('SELECT COUNT(*) as c FROM dashboard_users');
+    if (count[0]?.c === 0) {
+      const defaultEmail = process.env.ADMIN_EMAIL || 'admin@expeditee.com';
+      const defaultPass = process.env.ADMIN_PASSWORD || 'Expeditee@2026';
+      const { hash, salt } = hashPassword(defaultPass);
+      await q('INSERT INTO dashboard_users (email, name, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?)',
+        [defaultEmail, 'Admin', hash, salt, 'admin']);
+      console.log(`✅ Default admin created: ${defaultEmail} / ${defaultPass}`);
+      console.log('⚠️ CHANGE DEFAULT PASSWORD! Set ADMIN_EMAIL + ADMIN_PASSWORD in env vars, or login and update.');
+    }
+  } catch (e) { console.warn('⚠️ ensureUsersTable failed:', e.message); }
+}
+setTimeout(() => ensureUsersTable(), 3000);
+
+/* ═══════════ AUTH ENDPOINTS ═══════════ */
+// Login — public, no token needed
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    const rows = await q('SELECT * FROM dashboard_users WHERE email = ? AND active = 1', [email.trim().toLowerCase()]);
+    if (!rows.length) return res.status(401).json({ error: 'Invalid email or password' });
+    const user = rows[0];
+    if (!verifyPassword(password, user.password_hash, user.password_salt)) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    // Update last_login
+    q('UPDATE dashboard_users SET last_login = NOW() WHERE id = ?', [user.id]).catch(() => {});
+    const token = signToken({ id: user.id, email: user.email, role: user.role, name: user.name });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Verify token — needs valid token
+app.get('/api/auth/me', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: 'Invalid or expired token' });
+  res.json({ user: { id: payload.id, email: payload.email, name: payload.name, role: payload.role } });
+});
+
+// Change password — authenticated user
+app.post('/api/auth/change-password', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: 'Unauthorized' });
+  (async () => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+      const rows = await q('SELECT * FROM dashboard_users WHERE id = ?', [payload.id]);
+      if (!rows.length) return res.status(404).json({ error: 'User not found' });
+      if (!verifyPassword(currentPassword, rows[0].password_hash, rows[0].password_salt)) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+      const { hash, salt } = hashPassword(newPassword);
+      await q('UPDATE dashboard_users SET password_hash = ?, password_salt = ? WHERE id = ?', [hash, salt, payload.id]);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  })();
+});
+
+// Admin: list users
+app.get('/api/auth/users', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload || payload.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  q('SELECT id, email, name, role, active, created_at, last_login FROM dashboard_users ORDER BY created_at DESC')
+    .then(rows => res.json(rows))
+    .catch(e => res.status(500).json({ error: e.message }));
+});
+
+// Admin: create user
+app.post('/api/auth/users', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload || payload.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  (async () => {
+    try {
+      const { email, name, password, role } = req.body;
+      if (!email || !password || !name) return res.status(400).json({ error: 'Email, name, and password required' });
+      if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      const validRole = (role === 'admin' || role === 'viewer') ? role : 'viewer';
+      const { hash, salt } = hashPassword(password);
+      await q('INSERT INTO dashboard_users (email, name, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?)',
+        [email.trim().toLowerCase(), name.trim(), hash, salt, validRole]);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email already exists' });
+      res.status(500).json({ error: e.message });
+    }
+  })();
+});
+
+// Admin: toggle active / change role
+app.put('/api/auth/users/:id', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload || payload.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  (async () => {
+    try {
+      const uid = parseInt(req.params.id);
+      if (uid === payload.id) return res.status(400).json({ error: 'Cannot modify your own account here' });
+      const { active, role, resetPassword } = req.body;
+      if (active !== undefined) await q('UPDATE dashboard_users SET active = ? WHERE id = ?', [active ? 1 : 0, uid]);
+      if (role && (role === 'admin' || role === 'viewer')) await q('UPDATE dashboard_users SET role = ? WHERE id = ?', [role, uid]);
+      if (resetPassword && resetPassword.length >= 6) {
+        const { hash, salt } = hashPassword(resetPassword);
+        await q('UPDATE dashboard_users SET password_hash = ?, password_salt = ? WHERE id = ?', [hash, salt, uid]);
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  })();
+});
+
+// Admin: delete user
+app.delete('/api/auth/users/:id', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload || payload.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  const uid = parseInt(req.params.id);
+  if (uid === payload.id) return res.status(400).json({ error: 'Cannot delete yourself' });
+  q('DELETE FROM dashboard_users WHERE id = ?', [uid])
+    .then(() => res.json({ ok: true }))
+    .catch(e => res.status(500).json({ error: e.message }));
+});
+
+/* ═══════════ AUTH MIDDLEWARE — protects all /api/* below ═══════════ */
+app.use('/api', (req, res, next) => {
+  // Skip auth for login and health (already handled above)
+  if (req.path === '/auth/login' || req.path === '/health') return next();
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: 'Authentication required' });
+  req.user = payload;
+  next();
 });
 
 /* ═══════════ DEBUG ═══════════ */
