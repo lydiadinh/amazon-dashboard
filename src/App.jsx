@@ -3226,7 +3226,9 @@ function AdminUsersPanel({ t, onClose }) {
     try {
       const data = await authSendInvite(invEmail.trim(), invRole);
       setInviteLink(data.inviteUrl);
-      setSuccess('Invite created — copy the link and send it to ' + invEmail);
+      setSuccess(data.reused
+        ? 'Existing invite found — copy the link below (expires in 7 days)'
+        : 'Invite created — copy the link and send it to ' + invEmail);
     } catch (e) { setError(e.message); }
     setInvSending(false);
   };
