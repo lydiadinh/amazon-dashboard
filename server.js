@@ -393,13 +393,16 @@ app.post('/api/auth/invite', async (req, res) => {
     // Check if user already exists
     const existing = await q('SELECT id FROM dashboard_users WHERE email = ?', [email.trim().toLowerCase()]);
     if (existing.length) return res.status(409).json({ error: 'User with this email already exists' });
-    // Check if pending invite exists
-    const pendingInv = await q('SELECT id FROM dashboard_invites WHERE email = ? AND accepted_at IS NULL AND expires_at > NOW()', [email.trim().toLowerCase()]);
-    if (pendingInv.length) return res.status(409).json({ error: 'Pending invite already exists for this email' });
+    // Check if pending invite exists — return existing link instead of error
+    const pendingInv = await q('SELECT token FROM dashboard_invites WHERE email = ? AND accepted_at IS NULL AND expires_at > NOW()', [email.trim().toLowerCase()]);
+    if (pendingInv.length) {
+      const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.get('host')}`;
+      return res.json({ ok: true, inviteUrl: `${baseUrl}?invite=${pendingInv[0].token}`, token: pendingInv[0].token, reused: true });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const validRole = (role === 'admin' || role === 'viewer') ? role : 'viewer';
-    await q('INSERT INTO dashboard_invites (token, email, role, invited_by, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 48 HOUR))',
+    await q('INSERT INTO dashboard_invites (token, email, role, invited_by, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
       [token, email.trim().toLowerCase(), validRole, payload.id]);
 
     // Build invite URL
