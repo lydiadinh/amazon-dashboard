@@ -3475,7 +3475,7 @@ function Dashboard({authUser,onLogout}){
     if(!link){link=document.createElement("link");link.rel="icon";document.head.appendChild(link);}
     link.href=url;
   },[isDark]);
-  useEffect(()=>{if(store!=="All"&&opts.stores.length&&!opts.stores.includes(store))setStore("All")},[opts.stores]);
+  useEffect(()=>{if(store!=="All"&&opts.stores.length){const selected=store.split(',').map(s=>s.trim()).filter(Boolean);const valid=selected.filter(s=>opts.stores.includes(s));if(valid.length===0)setStore("All");else if(valid.length!==selected.length)setStore(valid.join(','));}},[opts.stores]);
   useEffect(()=>{if(seller!=="All"&&opts.sellers.length&&!opts.sellers.includes(seller))setSeller("All")},[opts.sellers]);
   useEffect(()=>{if(asinF!=="All"&&opts.asins.length&&!opts.asins.includes(asinF))setAsinF("All")},[opts.asins]);
 
